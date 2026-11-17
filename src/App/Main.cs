@@ -16,7 +16,7 @@ namespace PaleoSphere.App;
 /// 앱 진입점. 데이터를 읽고 세션·3D 화면·UI를 만든 뒤, 프레임마다
 /// 입력 → 명령 → 시뮬레이션 진행 → 스냅샷 표시 순서로 돌린다.
 /// 명령줄 인자(-- 뒤): --selftest, --scenario=id, --screenshot=경로, --frames=N, --warmup-ticks=N,
-/// --autoplay=배속, --select, --zoom=거리, --hour=시각, --tab=N, --hide-start, --benchmark=개체수, --seconds=N, --uitest
+/// --autoplay=배속, --select, --select-activity=Eat|Drink|Rest|Walk|Run, --zoom=거리, --hour=시각, --tab=N, --hide-start, --benchmark=개체수, --seconds=N, --uitest
 /// </summary>
 public partial class Main : Node
 {
@@ -25,6 +25,7 @@ public partial class Main : Node
     private GameSession? _session;
     private WorldView _world = null!;
     private CreatureLayer _creatures = null!;
+    private VegetationLayer _vegetation = null!;
     private CameraRig _camera = null!;
     private Hud? _hud;
     private Theme _theme = null!;
@@ -94,6 +95,8 @@ public partial class Main : Node
 
         _world = new WorldView { Name = "WorldView" };
         AddChild(_world);
+        _vegetation = new VegetationLayer { Name = "Vegetation" };
+        AddChild(_vegetation);
         _creatures = new CreatureLayer { Name = "Creatures" };
         AddChild(_creatures);
         _camera = new CameraRig { Name = "CameraRig" };
@@ -241,6 +244,7 @@ public partial class Main : Node
         _hadSelection = false;
         _creatures.Clear();
         _world.Rebuild(sim);
+        _vegetation.Rebuild(sim);
         _camera.SetTerrain(sim.World.Terrain);
         _hud?.OnWorldReplaced();
         if (_subscribedSim != sim)
@@ -255,7 +259,7 @@ public partial class Main : Node
         SimulationCore? sim = _session?.Sim;
         if (sim == null || e.Type != SimEventType.CreatureDied) return;
         if (sim.World.Species.TryGetIndex(e.SpeciesId, out int index))
-            _creatures.AddCorpseMarker(e.Position, sim.World.Terrain, sim.World.Species[index], index);
+            _creatures.AddCorpseMarker(e.Position, sim.World.Terrain, sim.World.Species[index], index, _creatures.LastHeading(e.CreatureId));
     }
 
     // ------------------------------------------------------------ 프레임
@@ -469,6 +473,29 @@ public partial class Main : Node
 
         if (_args.TryGetValue("autoplay", out string? speed) && float.TryParse(speed, out float s)) _hud.SetSpeed(s);
         if (_args.ContainsKey("tab")) _hud.SelectDockTab(ArgInt("tab", 0));
+        if (_args.TryGetValue("select-activity", out string? activityName) && Enum.TryParse(activityName, true, out PaleoSphere.Creatures.ActivityKind wantedActivity))
+        {
+            // 화면 확인용: 해당 동작을 하는 개체가 나올 때까지 진행한 뒤 고른다(최대 하루).
+            PaleoSphere.Creatures.Creature? found = null;
+            for (int i = 0; i < sim.World.Config.TicksPerDay && found == null; i++)
+            {
+                foreach (PaleoSphere.Creatures.Creature c in sim.Creatures)
+                {
+                    if (c.Activity != wantedActivity || (wantedActivity == PaleoSphere.Creatures.ActivityKind.Rest && c.Fatigue > 0.5f)) continue;
+                    // 동작을 시작한 지 조금 지난 개체를 고른다.
+                    if (sim.Clock.Tick - c.BehaviorStartTick < 300) continue;
+                    found = c;
+                    break;
+                }
+                if (found == null) sim.Step();
+            }
+            if (found != null)
+            {
+                _selectedId = found.Id;
+                _camera.FocusOn(new Vector3(found.Position.X, sim.World.Terrain.HeightAt(found.Position), found.Position.Z), zoomIn: true);
+                _camera.Following = true;
+            }
+        }
         if (_args.ContainsKey("select") && sim.CreatureCount > 0)
         {
             _selectedId = sim.Creatures[sim.CreatureCount / 2].Id;

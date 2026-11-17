@@ -10,10 +10,11 @@ using Section = PaleoSphere.Presentation.CreatureMeshBuilder.Section;
 namespace PaleoSphere.Presentation;
 
 /// <summary>
-/// 개체의 3D 표시. 리깅 모델이 들어오기 전까지는 코드로 만든 메시(CreatureMeshBuilder)를 쓴다.
-/// 몸통·머리·꼬리·다리를 관절 노드로 나눠 동작(서기·걷기·달리기·먹기·마시기·쉬기)에 따라 움직인다.
+/// 개체의 3D 표시. 종 데이터에 리깅 모델이 있으면 그 모델과 애니메이션을 쓰고(ModelProxy),
+/// 없거나 불러오지 못하면 코드로 만든 메시(CreatureMeshBuilder)를 관절 노드로 움직인다(CodeProxy).
+/// 동작(서기·걷기·달리기·먹기·마시기·쉬기)에 따라 자세를 바꾸고, 걷기·달리기 재생 속도는
+/// 실제 이동 속도에 맞춰 발이 미끄러지지 않게 한다.
 /// 위치는 스냅샷의 이전·현재 값을 보간하므로 틱 속도와 프레임률이 달라도 부드럽다.
-/// 메시는 종마다 한 번 만들어 모든 개체가 함께 쓴다.
 /// </summary>
 public partial class CreatureLayer : Node3D
 {
@@ -27,8 +28,28 @@ public partial class CreatureLayer : Node3D
         public StandardMaterial3D MarkerMaterial = null!;
     }
 
+    /// <summary>종별 모델 정보(한 번만 불러온다). Scene이 null이면 코드 메시를 쓴다.</summary>
+    private sealed class SpeciesModelCache
+    {
+        public PackedScene? Scene;
+        public float Scale = 1f;
+        public float WalkSpeed, RunSpeed;
+        public float RestDrop;
+        public readonly Dictionary<string, string> Animations = new();
+        public string Error = "";
+    }
+
     private sealed class Proxy
     {
+        // 모델을 쓰는 경우.
+        public Node3D? Model;
+        public AnimationPlayer? Player;
+        public CreatureRigModifier? Rig;
+        public string CurrentAnimation = "";
+        public float Heading;
+        public float Graze;
+        public float RestAmount;
+
         public Node3D Root = null!;
         public Node3D Body = null!;
         public Node3D Head = null!;
@@ -45,13 +66,15 @@ public partial class CreatureLayer : Node3D
 
     private sealed class Corpse
     {
-        public MeshInstance3D Node = null!;
+        public Node3D Node = null!;
         public double Age;
+        public float SinkDepth;
     }
 
     private readonly Dictionary<int, Proxy> _proxies = new();
     private readonly Dictionary<int, Stack<Proxy>> _pool = new();
     private readonly Dictionary<int, SpeciesMeshes> _meshes = new();
+    private readonly Dictionary<int, SpeciesModelCache> _models = new();
     private readonly List<Corpse> _corpses = new();
     private readonly List<int> _stale = new();
     private MeshInstance3D _selectionRing = null!;
@@ -98,6 +121,7 @@ public partial class CreatureLayer : Node3D
         foreach (Corpse c in _corpses) c.Node.QueueFree();
         _corpses.Clear();
         _meshes.Clear();
+        _models.Clear();
         SelectedId = -1;
         SelectedPosition = null;
         _selectionRing.Visible = false;
@@ -105,7 +129,7 @@ public partial class CreatureLayer : Node3D
 
     // ------------------------------------------------------------ 메시
 
-    private static Section[] Scale(float L, params (float Z, float Y, float W, float H)[] s)
+    private static Section[] Sections(float L, params (float Z, float Y, float W, float H)[] s)
     {
         var result = new Section[s.Length];
         for (int i = 0; i < s.Length; i++) result[i] = new Section(s[i].Z * L, s[i].Y * L, s[i].W * L, s[i].H * L);
@@ -139,7 +163,7 @@ public partial class CreatureLayer : Node3D
 
         // 몸통: 목 뒤에서 꼬리 밑동까지.
         CreatureMeshBuilder torso = NewBuilder(0.17f, 0.34f);
-        torso.AddBody(Scale(L,
+        torso.AddBody(Sections(L,
             (-0.22f, 0.250f, 0.040f, 0.050f), (-0.16f, 0.262f, 0.085f, 0.100f), (-0.07f, 0.275f, 0.115f, 0.125f),
             (0.03f, 0.280f, 0.120f, 0.130f), (0.12f, 0.275f, 0.100f, 0.112f), (0.20f, 0.258f, 0.060f, 0.072f),
             (0.25f, 0.245f, 0.042f, 0.050f)), sides: 14);
@@ -147,14 +171,14 @@ public partial class CreatureLayer : Node3D
 
         // 꼬리: 밑동 관절 기준 좌표.
         CreatureMeshBuilder tail = NewBuilder(-0.09f, 0.05f);
-        tail.AddBody(Scale(L,
+        tail.AddBody(Sections(L,
             (0.00f, 0.000f, 0.052f, 0.062f), (0.07f, -0.012f, 0.036f, 0.042f), (0.15f, -0.030f, 0.022f, 0.026f),
             (0.23f, -0.050f, 0.010f, 0.012f), (0.29f, -0.065f, 0.003f, 0.004f)), sides: 10);
         m.Tail = tail.Build();
 
         // 머리: 목 관절 기준 좌표.
         CreatureMeshBuilder head = NewBuilder(-0.07f, 0.06f);
-        head.AddBody(Scale(L,
+        head.AddBody(Sections(L,
             (0.03f, 0.000f, 0.050f, 0.060f), (-0.04f, 0.000f, 0.060f, 0.068f), (-0.10f, -0.008f, 0.050f, 0.058f),
             (-0.17f, -0.022f, 0.034f, 0.042f), (-0.22f, -0.036f, 0.018f, 0.026f), (-0.245f, -0.048f, 0.004f, 0.006f)), sides: 12);
         var eye = new Color(0.04f, 0.04f, 0.04f);
@@ -209,8 +233,131 @@ public partial class CreatureLayer : Node3D
         return node;
     }
 
+    // ------------------------------------------------------------ 리깅 모델
+
+    /// <summary>종의 모델을 불러와 크기·보폭·애니메이션 이름을 정리한다. 실패하면 Scene을 비워 둔다.</summary>
+    private SpeciesModelCache ModelFor(int speciesIndex, SpeciesDefinition sp)
+    {
+        if (_models.TryGetValue(speciesIndex, out SpeciesModelCache? cached)) return cached;
+        var cache = new SpeciesModelCache();
+        _models[speciesIndex] = cache;
+        SpeciesModel? info = sp.Model;
+        if (info == null) return cache;
+        if (!ResourceLoader.Exists(info.Path))
+        {
+            cache.Error = "모델 파일이 없습니다: " + info.Path;
+            GD.PushWarning(cache.Error);
+            return cache;
+        }
+        if (GD.Load(info.Path) is not PackedScene scene)
+        {
+            cache.Error = "모델을 불러오지 못했습니다: " + info.Path;
+            GD.PushWarning(cache.Error);
+            return cache;
+        }
+
+        // 애니메이션 이름 대응과 반복 설정을 위해 한 번 펼쳐 본다.
+        Node3D probe = scene.Instantiate<Node3D>();
+        AnimationPlayer? player = FindFirst<AnimationPlayer>(probe);
+        Skeleton3D? skel = FindFirst<Skeleton3D>(probe);
+        if (player == null || skel == null)
+        {
+            cache.Error = "모델에 AnimationPlayer나 Skeleton3D가 없습니다: " + info.Path;
+            GD.PushWarning(cache.Error);
+            probe.Free();
+            return cache;
+        }
+        foreach (KeyValuePair<string, string> pair in info.Animations)
+        {
+            foreach (string full in player.GetAnimationList())
+            {
+                if (!full.EndsWith(pair.Value, StringComparison.Ordinal)) continue;
+                cache.Animations[pair.Key] = full;
+                Animation anim = player.GetAnimation(full);
+                anim.LoopMode = pair.Key is "idle" or "walk" or "run" ? Animation.LoopModeEnum.Linear : Animation.LoopModeEnum.None;
+            }
+        }
+        if (!cache.Animations.ContainsKey("idle") || !cache.Animations.ContainsKey("walk") || !cache.Animations.ContainsKey("run"))
+        {
+            cache.Error = "모델에 idle·walk·run 애니메이션이 없습니다: " + info.Path;
+            GD.PushWarning(cache.Error);
+            probe.Free();
+            return cache;
+        }
+
+        // 엎드릴 때 낮출 거리: 엉덩이 높이의 45%.
+        int hips = skel.FindBone("Hips");
+        Transform3D toModel = SkeletonToModel(probe, skel);
+        float hipHeight = hips >= 0 ? (toModel * skel.GetBoneGlobalRest(hips).Origin).Y : info.LengthUnits * 0.3f;
+        cache.RestDrop = hipHeight * 0.45f;
+        probe.Free();
+
+        cache.Scene = scene;
+        cache.Scale = sp.BodyLengthM / info.LengthUnits;
+        cache.WalkSpeed = info.WalkUnitsPerSecond * cache.Scale;
+        cache.RunSpeed = info.RunUnitsPerSecond * cache.Scale;
+        return cache;
+    }
+
+    private static T? FindFirst<T>(Node node) where T : Node
+    {
+        if (node is T match) return match;
+        foreach (Node child in node.GetChildren())
+        {
+            T? found = FindFirst<T>(child);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static Transform3D SkeletonToModel(Node3D modelRoot, Node3D skeleton)
+    {
+        Transform3D t = Transform3D.Identity;
+        for (Node? n = skeleton; n != null && n != modelRoot; n = n.GetParent())
+            if (n is Node3D n3) t = n3.Transform * t;
+        return t;
+    }
+
+    private Proxy? BuildModel(int speciesIndex, SpeciesDefinition sp)
+    {
+        SpeciesModelCache cache = ModelFor(speciesIndex, sp);
+        if (cache.Scene == null) return null;
+        Node3D model = cache.Scene.Instantiate<Node3D>();
+        model.Scale = Vector3.One * cache.Scale;
+        AnimationPlayer player = FindFirst<AnimationPlayer>(model)!;
+        Skeleton3D skel = FindFirst<Skeleton3D>(model)!;
+        var rig = new CreatureRigModifier { SkeletonToModel = SkeletonToModel(model, skel), RestDrop = cache.RestDrop };
+        skel.AddChild(rig);
+
+        var proxy = new Proxy { SpeciesIndex = speciesIndex, Root = new Node3D(), Model = model, Player = player, Rig = rig };
+        proxy.Root.AddChild(model);
+        proxy.Body = proxy.Root;
+        proxy.Head = proxy.Root;
+        proxy.Tail = proxy.Root;
+        proxy.Marker = NewMarker(sp, speciesIndex);
+        proxy.Root.AddChild(proxy.Marker);
+        return proxy;
+    }
+
+    private MeshInstance3D NewMarker(SpeciesDefinition sp, int speciesIndex)
+    {
+        SpeciesMeshes m = MeshesFor(speciesIndex, sp);
+        return new MeshInstance3D
+        {
+            Mesh = MarkerMesh,
+            MaterialOverride = m.MarkerMaterial,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Visible = false,
+        };
+    }
+
+    // ------------------------------------------------------------ 코드 메시
+
     private Proxy Build(int speciesIndex, SpeciesDefinition sp)
     {
+        Proxy? withModel = BuildModel(speciesIndex, sp);
+        if (withModel != null) return withModel;
+
         SpeciesMeshes m = MeshesFor(speciesIndex, sp);
         var proxy = new Proxy { SpeciesIndex = speciesIndex, Root = new Node3D() };
 
@@ -239,13 +386,7 @@ public partial class CreatureLayer : Node3D
             proxy.Knees[i] = knee;
         }
 
-        proxy.Marker = new MeshInstance3D
-        {
-            Mesh = MarkerMesh,
-            MaterialOverride = m.MarkerMaterial,
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            Visible = false,
-        };
+        proxy.Marker = NewMarker(sp, speciesIndex);
         proxy.Root.AddChild(proxy.Marker);
         return proxy;
     }
@@ -275,10 +416,28 @@ public partial class CreatureLayer : Node3D
     }
 
     /// <summary>사망 사건이 났을 때 그 자리에 잠깐 남는 표식. 사체 자원(분해·영양 환원)은 아직 구현되지 않았다.</summary>
-    public void AddCorpseMarker(Vec2 position, TerrainGrid terrain, SpeciesDefinition sp, int speciesIndex)
+    public void AddCorpseMarker(Vec2 position, TerrainGrid terrain, SpeciesDefinition sp, int speciesIndex, float heading)
     {
-        SpeciesMeshes m = MeshesFor(speciesIndex, sp);
         float L = sp.BodyLengthM;
+        SpeciesModelCache cache = ModelFor(speciesIndex, sp);
+        if (cache.Scene != null && cache.Animations.TryGetValue("death", out string? death))
+        {
+            // 모델이 있으면 쓰러지는 동작을 한 번 재생하고 마지막 자세로 남긴다.
+            Node3D body = cache.Scene.Instantiate<Node3D>();
+            body.Scale = Vector3.One * cache.Scale;
+            var holder = new Node3D
+            {
+                Position = new Vector3(position.X, terrain.HeightAt(position), position.Z),
+                Rotation = new Vector3(0f, Mathf.Pi * 0.5f - heading, 0f),
+            };
+            holder.AddChild(body);
+            AddChild(holder);
+            FindFirst<AnimationPlayer>(body)?.Play(death);
+            _corpses.Add(new Corpse { Node = holder, SinkDepth = L * 0.35f });
+            return;
+        }
+
+        SpeciesMeshes m = MeshesFor(speciesIndex, sp);
         var node = new MeshInstance3D
         {
             Mesh = m.Torso,
@@ -293,7 +452,7 @@ public partial class CreatureLayer : Node3D
             },
         };
         AddChild(node);
-        _corpses.Add(new Corpse { Node = node });
+        _corpses.Add(new Corpse { Node = node, SinkDepth = 0f });
     }
 
     // ------------------------------------------------------------ 프레임
@@ -316,13 +475,109 @@ public partial class CreatureLayer : Node3D
                 _proxies[c.Id] = p;
             }
             p.Seen = true;
-            SpeciesMeshes m = _meshes[c.SpeciesIndex];
 
             float x = Mathf.Lerp(c.PrevPosition.X, c.Position.X, alpha);
             float z = Mathf.Lerp(c.PrevPosition.Z, c.Position.Z, alpha);
             float heading = Mathf.LerpAngle(c.PrevHeading, c.Heading, alpha);
             float y = terrain.HeightAt(new Vec2(x, z));
             var position = new Vector3(x, y, z);
+            float L = sp.BodyLengthM;
+            float cameraDistance = position.DistanceTo(cameraPosition);
+            p.Heading = heading;
+            UpdateMarker(p, cameraDistance, L, c.BodySize);
+
+            if (p.Model != null)
+            {
+                UpdateModel(p, c, position, heading, dt, cameraDistance);
+            }
+            else
+            {
+                UpdateCode(p, c, sp, position, heading, dt, cameraDistance);
+            }
+
+            if (c.Id == SelectedId)
+            {
+                SelectedPosition = position;
+                float r = L * 0.62f * c.BodySize;
+                _selectionRing.Visible = true;
+                _selectionRing.Position = new Vector3(x, Mathf.Max(y, terrain.WaterLevel) + 0.25f, z);
+                _selectionRing.Scale = new Vector3(r, r, r);
+            }
+        }
+
+        FinishFrame(delta);
+    }
+
+    /// <summary>마지막으로 그린 방향(사체를 같은 방향으로 눕히는 데 쓴다).</summary>
+    public float LastHeading(int creatureId) => _proxies.TryGetValue(creatureId, out Proxy? p) ? p.Heading : 0f;
+
+    private static void UpdateMarker(Proxy p, float cameraDistance, float L, float bodySize)
+    {
+        p.Marker.Visible = cameraDistance > MarkerDistance;
+        if (!p.Marker.Visible) return;
+        // 화면에서 늘 비슷한 크기로 보이도록 거리에 비례해 키운다. 모델은 따로 크기를 줄였으므로 Root 기준으로 둔다.
+        float markerSize = cameraDistance * 0.011f / bodySize;
+        p.Marker.Scale = new Vector3(markerSize, markerSize, markerSize);
+        p.Marker.Position = new Vector3(0f, 0.55f * L + markerSize, 0f);
+    }
+
+    /// <summary>리깅 모델: 동작에 맞는 애니메이션을 고르고, 걷기·달리기는 이동 속도에 맞춰 재생 속도를 바꾼다.</summary>
+    private void UpdateModel(Proxy p, CreatureSnapshot c, Vector3 position, float heading, float dt, float cameraDistance)
+    {
+        SpeciesModelCache cache = _models[p.SpeciesIndex];
+        AnimationPlayer player = p.Player!;
+        p.Root.Position = position;
+        // 모델의 앞은 +Z다.
+        p.Root.Rotation = new Vector3(0f, Mathf.Pi * 0.5f - heading, 0f);
+        p.Root.Scale = Vector3.One * c.BodySize;
+
+        bool moving = c.Speed > 0.05f && (c.Activity == ActivityKind.Walk || c.Activity == ActivityKind.Run);
+        string key = "idle";
+        float speedScale = 1f;
+        if (moving)
+        {
+            // 너무 느린 달리기는 걷기로 보인다.
+            bool run = c.Activity == ActivityKind.Run && c.Speed > cache.WalkSpeed * 1.4f;
+            key = run ? "run" : "walk";
+            float natural = (run ? cache.RunSpeed : cache.WalkSpeed) * c.BodySize;
+            speedScale = Mathf.Clamp(c.Speed / Mathf.Max(natural, 0.01f), 0.3f, 2.5f);
+        }
+        else if (c.Activity == ActivityKind.Rest)
+        {
+            speedScale = 0.35f;
+        }
+
+        string anim = cache.Animations[key];
+        if (anim != p.CurrentAnimation)
+        {
+            bool first = p.CurrentAnimation.Length == 0;
+            player.Play(anim, first ? 0.0 : 0.3);
+            if (first)
+            {
+                // 개체마다 시작 위치를 달리해 모두가 똑같이 움직이지 않게 한다.
+                player.Seek(player.GetAnimation(anim).Length * ((c.Id * 0.618f) % 1f), true);
+            }
+            p.CurrentAnimation = anim;
+        }
+        player.SpeedScale = speedScale;
+
+        float targetGraze = c.Activity is ActivityKind.Eat or ActivityKind.Drink ? 1f : 0f;
+        float targetRest = c.Activity == ActivityKind.Rest ? 1f : 0f;
+        float blend = Mathf.Min(1f, dt * 3f);
+        p.Graze = Mathf.Lerp(p.Graze, targetGraze, blend);
+        p.RestAmount = Mathf.Lerp(p.RestAmount, targetRest, Mathf.Min(1f, dt * 1.5f));
+        p.Rig!.Graze = p.Graze;
+        p.Rig.Rest = p.RestAmount;
+
+        // 멀리 있으면 애니메이션 계산을 멈춰 비용을 줄인다(자세는 그대로 남는다).
+        bool animate = cameraDistance < DetailDistance;
+        if (player.Active != animate) player.Active = animate;
+    }
+
+    /// <summary>코드 메시: 관절 노드를 절차적으로 움직인다.</summary>
+    private void UpdateCode(Proxy p, CreatureSnapshot c, SpeciesDefinition sp, Vector3 position, float heading, float dt, float cameraDistance)
+    {
+            SpeciesMeshes m = _meshes[c.SpeciesIndex];
             float L = sp.BodyLengthM;
 
             // 걸음: 한 걸음 길이에 맞춰 위상을 돌린다. 발이 미끄러져 보이지 않게 속도에 비례시킨다.
@@ -355,16 +610,7 @@ public partial class CreatureLayer : Node3D
             p.Head.Rotation = new Vector3(-p.HeadPitch, moving ? Mathf.Sin(p.Phase) * 0.04f : 0f, 0f);
             p.Tail.Rotation = new Vector3(0f, Mathf.Sin(p.Phase * (moving ? 1f : 0.5f)) * (moving ? 0.20f : 0.07f), 0f);
 
-            float cameraDistance = position.DistanceTo(cameraPosition);
             bool legsVisible = cameraDistance < DetailDistance && p.Crouch < 0.6f;
-            p.Marker.Visible = cameraDistance > MarkerDistance;
-            if (p.Marker.Visible)
-            {
-                // 화면에서 늘 비슷한 크기로 보이도록 거리에 비례해 키운다.
-                float markerSize = cameraDistance * 0.011f / c.BodySize;
-                p.Marker.Scale = new Vector3(markerSize, markerSize, markerSize);
-                p.Marker.Position = new Vector3(0f, 0.55f * L + markerSize, 0f);
-            }
             for (int l = 0; l < 4; l++)
             {
                 Node3D hip = p.Hips[l];
@@ -376,17 +622,10 @@ public partial class CreatureLayer : Node3D
                 hip.Rotation = new Vector3(Mathf.Sin(legPhase) * swing + lift * swing * 0.35f, 0f, 0f);
                 p.Knees[l].Rotation = new Vector3(-lift * swing * 1.7f, 0f, 0f);
             }
+    }
 
-            if (c.Id == SelectedId)
-            {
-                SelectedPosition = position;
-                float r = L * 0.62f * c.BodySize;
-                _selectionRing.Visible = true;
-                _selectionRing.Position = new Vector3(x, Mathf.Max(y, terrain.WaterLevel) + 0.25f, z);
-                _selectionRing.Scale = new Vector3(r, r, r);
-            }
-        }
-
+    private void FinishFrame(double delta)
+    {
         _stale.Clear();
         foreach (KeyValuePair<int, Proxy> kv in _proxies)
             if (!kv.Value.Seen) _stale.Add(kv.Key);
@@ -407,10 +646,16 @@ public partial class CreatureLayer : Node3D
                 _corpses.RemoveAt(i);
                 continue;
             }
-            if (corpse.Node.MaterialOverride is StandardMaterial3D material)
+            double remaining = CorpseSeconds - corpse.Age;
+            if (corpse.Node is MeshInstance3D mesh && mesh.MaterialOverride is StandardMaterial3D material)
             {
-                float fade = (float)Math.Clamp((CorpseSeconds - corpse.Age) / 6.0, 0.0, 1.0);
+                float fade = (float)Math.Clamp(remaining / 6.0, 0.0, 1.0);
                 material.AlbedoColor = new Color(material.AlbedoColor.R, material.AlbedoColor.G, material.AlbedoColor.B, fade);
+            }
+            else if (remaining < 8.0 && corpse.SinkDepth > 0f)
+            {
+                // 모델 사체는 마지막 몇 초 동안 땅으로 가라앉는다.
+                corpse.Node.Position -= new Vector3(0f, (float)(corpse.SinkDepth / 8.0 * delta), 0f);
             }
         }
     }

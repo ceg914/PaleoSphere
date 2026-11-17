@@ -170,6 +170,10 @@ public static class DefinitionLoaders
             color = proxy.Color("color", Gray);
         }
 
+        SpeciesModel? model = null;
+        if (f.TryObj("model", out JsonFields mf, required: false))
+            model = ParseModel(mf, doc.RootElement.GetProperty("model"), source, report);
+
         var facts = new List<FactEntry>();
         List<JsonElement> factItems = f.Array("facts", 64);
         for (int i = 0; i < factItems.Count; i++)
@@ -232,9 +236,56 @@ public static class DefinitionLoaders
             ProxyColorR = color[0],
             ProxyColorG = color[1],
             ProxyColorB = color[2],
+            Model = model,
             Facts = facts,
             Sources = sources,
         };
+    }
+
+    /// <summary>허용하는 모델 파일 확장자.</summary>
+    public static readonly string[] ModelExtensions = { ".fbx", ".glb", ".gltf", ".tscn", ".scn" };
+
+    public static readonly string[] ModelAnimationKeys = { "idle", "walk", "run", "death", "attack" };
+
+    private static SpeciesModel? ParseModel(JsonFields m, JsonElement element, string source, ValidationReport report)
+    {
+        int before = report.Errors.Count;
+        string path = m.Str("path", 200);
+        // 데이터 파일이 임의 경로를 읽지 못하게 res://assets/ 아래로 한정한다.
+        bool extOk = false;
+        foreach (string ext in ModelExtensions)
+            if (path.EndsWith(ext, System.StringComparison.OrdinalIgnoreCase)) extOk = true;
+        if (path.Length > 0 && (!path.StartsWith("res://assets/", System.StringComparison.Ordinal) || path.Contains("..") || path.Contains('\\') || !extOk))
+            report.Error(source, $"'model.path'는 res://assets/ 아래의 {string.Join(", ", ModelExtensions)} 파일이어야 합니다: \"{path}\"");
+
+        var animations = new Dictionary<string, string>(System.StringComparer.Ordinal);
+        if (m.TryObj("animations", out JsonFields anims))
+        {
+            foreach (string key in ModelAnimationKeys)
+            {
+                string name = anims.Str(key, 100, required: key is "idle" or "walk" or "run");
+                if (name.Length > 0) animations[key] = name;
+            }
+        }
+        if (element.TryGetProperty("animations", out JsonElement animEl) && animEl.ValueKind == JsonValueKind.Object)
+        {
+            foreach (JsonProperty prop in animEl.EnumerateObject())
+                if (System.Array.IndexOf(ModelAnimationKeys, prop.Name) < 0)
+                    report.Warn(source, $"'model.animations.{prop.Name}'은(는) 쓰이지 않는 동작 이름입니다.");
+        }
+
+        var model = new SpeciesModel
+        {
+            Path = path,
+            Source = m.Str("source", 300),
+            License = m.Str("license", 100),
+            Evidence = m.Evidence(),
+            LengthUnits = m.Num("length_units", 0.001f, 100000f),
+            WalkUnitsPerSecond = m.Num("walk_units_per_second", 0.001f, 100000f),
+            RunUnitsPerSecond = m.Num("run_units_per_second", 0.001f, 100000f),
+            Animations = animations,
+        };
+        return report.Errors.Count == before ? model : null;
     }
 
     public static WorldConfig? ParseWorldConfig(JsonElement element, string source, ValidationReport report, string path = "world")

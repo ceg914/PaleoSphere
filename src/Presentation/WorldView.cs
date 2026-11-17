@@ -8,15 +8,13 @@ using PaleoSphere.World;
 namespace PaleoSphere.Presentation;
 
 /// <summary>
-/// 지형·수면·나무·하늘의 3D 표시. 코어의 지형과 식생 배열을 읽기만 한다.
+/// 지형·수면·하늘의 3D 표시. 코어의 지형과 식생 배열을 읽기만 한다. 식물은 VegetationLayer가 그린다.
 /// 식생량은 텍스처로 올려 셰이더가 색에 반영하므로, 뜯어 먹힌 자리가 화면에 그대로 드러난다.
 /// </summary>
 public partial class WorldView : Node3D
 {
     private MeshInstance3D _terrainMesh = null!;
     private MeshInstance3D _water = null!;
-    private MultiMeshInstance3D _treeCrowns = null!;
-    private MultiMeshInstance3D _treeTrunks = null!;
     private DirectionalLight3D _sun = null!;
     private WorldEnvironment _worldEnv = null!;
     private Godot.Environment _env = null!;
@@ -38,20 +36,9 @@ public partial class WorldView : Node3D
         {
             Name = "Water",
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            MaterialOverride = new StandardMaterial3D
-            {
-                AlbedoColor = new Color(0.16f, 0.36f, 0.46f, 0.74f),
-                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-                Roughness = 0.12f,
-                Metallic = 0.25f,
-            },
+            MaterialOverride = new ShaderMaterial { Shader = GD.Load<Shader>("res://assets/shaders/water.gdshader") },
         };
         AddChild(_water);
-
-        _treeCrowns = new MultiMeshInstance3D { Name = "TreeCrowns" };
-        _treeTrunks = new MultiMeshInstance3D { Name = "TreeTrunks" };
-        AddChild(_treeCrowns);
-        AddChild(_treeTrunks);
 
         _sun = new DirectionalLight3D
         {
@@ -142,6 +129,7 @@ public partial class WorldView : Node3D
         _terrainMaterial.SetShaderParameter("bare_tex", ImageTexture.CreateFromImage(Image.CreateFromData(n, n, false, Image.Format.Rgb8, bare)));
         _terrainMaterial.SetShaderParameter("water_level", t.WaterLevel);
         _terrainMaterial.SetShaderParameter("cell_count", (float)n);
+        _terrainMaterial.SetShaderParameter("world_size", t.WorldSize);
 
         _vegBytes = new byte[n * n];
         FillVegetationBytes(sim.World.Vegetation);
@@ -150,10 +138,9 @@ public partial class WorldView : Node3D
         _terrainMaterial.SetShaderParameter("veg_tex", _vegTexture);
 
         float size = t.WorldSize;
-        _water.Mesh = new PlaneMesh { Size = new Vector2(size, size) };
+        _water.Mesh = new PlaneMesh { Size = new Vector2(size, size), SubdivideWidth = 0, SubdivideDepth = 0 };
         _water.Position = new Vector3(size * 0.5f, t.WaterLevel, size * 0.5f);
 
-        BuildTrees(sim);
         SetHighlight(Vector3.Zero, 0f, Colors.White);
     }
 
@@ -166,54 +153,6 @@ public partial class WorldView : Node3D
             float k = veg.Capacity[i];
             _vegBytes[i] = k > 0f ? ToByte(veg.Biomass[i] / k) : (byte)0;
         }
-    }
-
-    /// <summary>숲 셀에 나무 도형을 흩뿌린다. 표시용이며 이동이나 식생량에는 영향이 없다.</summary>
-    private void BuildTrees(SimulationCore sim)
-    {
-        TerrainGrid t = sim.World.Terrain;
-        int n = t.Size;
-        float cs = t.CellSize;
-        ulong seed = sim.World.Config.Seed + 9001UL;
-        sim.World.Biomes.TryGetIndex("forest", out int forest);
-        sim.World.Biomes.TryGetIndex("wetland", out int wetland);
-
-        var transforms = new System.Collections.Generic.List<Transform3D>();
-        for (int cz = 0; cz < n; cz++)
-        {
-            for (int cx = 0; cx < n; cx++)
-            {
-                int i = cz * n + cx;
-                if (t.IsWater(i)) continue;
-                float chance = t.Biome[i] == forest ? 0.055f : (t.Biome[i] == wetland ? 0.008f : 0.0025f);
-                if (ValueNoise.Hash(seed, cx, cz) > chance) continue;
-                float jx = ValueNoise.Hash(seed + 1, cx, cz), jz = ValueNoise.Hash(seed + 2, cx, cz);
-                float scale = 0.7f + 0.9f * ValueNoise.Hash(seed + 3, cx, cz);
-                var p = new Vec2((cx + jx) * cs, (cz + jz) * cs);
-                var basis = Basis.Identity.Scaled(new Vector3(scale, scale, scale));
-                transforms.Add(new Transform3D(basis, new Vector3(p.X, t.HeightAt(p), p.Z)));
-                if (transforms.Count >= 20000) break;
-            }
-        }
-
-        var crown = new CylinderMesh { TopRadius = 0f, BottomRadius = 2.6f, Height = 9f, RadialSegments = 7, Rings = 1 };
-        var trunk = new CylinderMesh { TopRadius = 0.35f, BottomRadius = 0.5f, Height = 4f, RadialSegments = 6, Rings = 1 };
-        var crownMat = new StandardMaterial3D { AlbedoColor = new Color(0.13f, 0.33f, 0.16f), Roughness = 0.9f };
-        var trunkMat = new StandardMaterial3D { AlbedoColor = new Color(0.33f, 0.25f, 0.17f), Roughness = 0.95f };
-        crown.Material = crownMat;
-        trunk.Material = trunkMat;
-
-        var crowns = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, Mesh = crown, InstanceCount = transforms.Count };
-        var trunks = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, Mesh = trunk, InstanceCount = transforms.Count };
-        for (int i = 0; i < transforms.Count; i++)
-        {
-            Transform3D tr = transforms[i];
-            float s = tr.Basis.Scale.X;
-            trunks.SetInstanceTransform(i, new Transform3D(tr.Basis, tr.Origin + new Vector3(0f, 2f * s, 0f)));
-            crowns.SetInstanceTransform(i, new Transform3D(tr.Basis, tr.Origin + new Vector3(0f, 7.5f * s, 0f)));
-        }
-        _treeCrowns.Multimesh = crowns;
-        _treeTrunks.Multimesh = trunks;
     }
 
     /// <summary>도구 범위 표시. radius가 0이면 끈다.</summary>

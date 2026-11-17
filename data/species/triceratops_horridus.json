@@ -2,7 +2,10 @@
   "schema_version": 1,
   "id": "triceratops_horridus",
   "scientific_name": "Triceratops horridus",
-  "name": { "ko": "트리케라톱스", "en": "Triceratops" },
+  "name": {
+    "ko": "트리케라톱스",
+    "en": "Triceratops"
+  },
   "diet": "herbivore",
   "period": {
     "text": "후기 백악기 마스트리흐트절 후반 (약 6800만~6600만 년 전)",
@@ -44,12 +47,37 @@
     "max_age_days": 400
   },
   "placement": {
-    "biomes": ["open_plain", "forest", "wetland", "upland"]
+    "biomes": [
+      "open_plain",
+      "forest",
+      "wetland",
+      "upland"
+    ]
   },
   "proxy": {
     "evidence": "simplified",
     "shape": "ceratopsian",
-    "color": [0.50, 0.42, 0.30]
+    "color": [
+      0.5,
+      0.42,
+      0.3
+    ]
+  },
+  "model": {
+    "evidence": "simplified",
+    "path": "res://assets/models/dinosaurs/Triceratops.fbx",
+    "source": "Quaternius, Animated Dinosaur Pack (2018), quaternius.com",
+    "license": "CC0 1.0",
+    "length_units": 19.4,
+    "walk_units_per_second": 4.34,
+    "run_units_per_second": 21.15,
+    "animations": {
+      "idle": "Triceratops_Idle",
+      "walk": "Triceratops_Walk",
+      "run": "Triceratops_Run",
+      "death": "Triceratops_Death",
+      "attack": "Triceratops_Attack"
+    }
   },
   "facts": [
     {
@@ -74,7 +102,7 @@
     },
     {
       "topic": "피부와 색",
-      "text": "피부색은 알 수 없다. 화면의 색과 도형은 임시 표시다.",
+      "text": "피부색은 알 수 없다. 화면의 모델은 양식화된 로우폴리 표현이며, 색과 비율은 고증이 아니다.",
       "evidence": "simplified"
     },
     {
@@ -100,6 +128,10 @@
     {
       "title": "체격 수치에 대한 주의",
       "note": "몸길이·체중 범위는 2차 자료를 종합한 값이다. 1차 문헌과 직접 대조하지 않았다."
+    },
+    {
+      "title": "3D 모델: Quaternius, Animated Dinosaur Pack (2018)",
+      "note": "CC0 1.0. 표시용 양식화 모델로, 형태 고증 자료가 아니다."
     }
   ]
 }

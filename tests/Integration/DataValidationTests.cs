@@ -101,6 +101,58 @@ public class DataValidationTests : IDisposable
     }
 
     [Fact]
+    public void SpeciesModel_IsParsed()
+    {
+        SpeciesDefinition sp = TestData.Data.Species[0];
+        Assert.NotNull(sp.Model);
+        Assert.StartsWith("res://assets/", sp.Model!.Path);
+        Assert.Equal("CC0 1.0", sp.Model.License);
+        Assert.True(sp.Model.LengthUnits > 0f && sp.Model.WalkUnitsPerSecond > 0f && sp.Model.RunUnitsPerSecond > sp.Model.WalkUnitsPerSecond);
+        foreach (string key in new[] { "idle", "walk", "run" }) Assert.True(sp.Model.Animations.ContainsKey(key), key);
+        Assert.True(System.IO.File.Exists(System.IO.Path.Combine(TestData.RepoRoot, sp.Model.Path.Substring("res://".Length))), "모델 파일이 저장소에 없습니다.");
+    }
+
+    public static TheoryData<string, string> BrokenModels()
+    {
+        string good = RepoFile("species/triceratops_horridus.json");
+        const string path = "res://assets/models/dinosaurs/Triceratops.fbx";
+        return new TheoryData<string, string>
+        {
+            { "저장소 밖 경로", good.Replace(path, "res://assets/../../etc/passwd.fbx") },
+            { "assets 밖", good.Replace(path, "res://src/App/Main.fbx") },
+            { "절대 경로", good.Replace(path, "C:/models/Triceratops.fbx") },
+            { "허용하지 않는 확장자", good.Replace(path, "res://assets/models/dinosaurs/Triceratops.exe") },
+            { "idle 애니메이션 누락", good.Replace("\"idle\": \"Triceratops_Idle\",", "") },
+            { "음수 길이", good.Replace("\"length_units\": 19.4", "\"length_units\": -1") },
+            { "라이선스 누락", good.Replace("\"license\": \"CC0 1.0\",", "") },
+        };
+    }
+
+    [Theory]
+    [MemberData(nameof(BrokenModels))]
+    public void BrokenModelSection_IsRejected(string label, string text)
+    {
+        var report = new ValidationReport();
+        SpeciesDefinition? s = DefinitionLoaders.ParseSpecies(text, "model.json", report);
+        Assert.True(s == null, label + ": 잘못된 모델 정보가 통과했습니다.");
+        Assert.NotEmpty(report.Errors);
+    }
+
+    [Fact]
+    public void SpeciesWithoutModel_IsStillValid()
+    {
+        string good = RepoFile("species/triceratops_horridus.json");
+        int start = good.IndexOf("\"model\":", System.StringComparison.Ordinal);
+        int end = good.IndexOf("\"facts\":", System.StringComparison.Ordinal);
+        string withoutModel = good.Remove(start, end - start);
+        var report = new ValidationReport();
+        SpeciesDefinition? s = DefinitionLoaders.ParseSpecies(withoutModel, "nomodel.json", report);
+        Assert.NotNull(s);
+        Assert.Null(s!.Model);
+        Assert.Empty(report.Errors);
+    }
+
+    [Fact]
     public void DeeplyNestedJson_IsRejected()
     {
         string deep = string.Concat(Enumerable.Repeat("{\"a\":", 200)) + "1" + new string('}', 200);
@@ -210,7 +262,10 @@ public class DataValidationTests : IDisposable
     {
         CopyData();
         string path = Path.Combine(_dir, "species", "triceratops_horridus.json");
-        File.WriteAllText(path, File.ReadAllText(path).Replace("\"upland\"]", "\"moon\"]"), Encoding.UTF8);
+        // 서식(줄바꿈)에 기대지 않도록 JSON 구조로 고친다.
+        var node = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        ((System.Text.Json.Nodes.JsonArray)node["placement"]!["biomes"]!).Add("moon");
+        File.WriteAllText(path, node.ToJsonString(), Encoding.UTF8);
         GameData data = GameData.LoadFromDirectory(_dir);
         Assert.True(data.IsUsable);
         Assert.Contains(data.Report.Warnings, w => w.Contains("moon"));

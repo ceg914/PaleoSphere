@@ -362,6 +362,91 @@
           }
         }
       }
+    },
+    "model": {
+      "type": "object",
+      "description": "3D 모델(선택). 표현 계층만 쓴다. 없거나 불러오지 못하면 코드로 만든 메시를 쓴다.",
+      "required": [
+        "evidence",
+        "path",
+        "source",
+        "license",
+        "length_units",
+        "walk_units_per_second",
+        "run_units_per_second",
+        "animations"
+      ],
+      "properties": {
+        "evidence": {
+          "enum": [
+            "confirmed",
+            "inferred",
+            "simplified"
+          ],
+          "description": "confirmed = 화석으로 확인, inferred = 학술적 추정, simplified = 게임적 단순화"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^res://assets/[^\\\\]*\\.(fbx|glb|gltf|tscn|scn)$",
+          "maxLength": 200
+        },
+        "source": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "license": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "length_units": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 100000,
+          "description": "모델의 머리끝–꼬리끝 길이(모델 단위). tools/godot/measure_model.gd로 잰다"
+        },
+        "walk_units_per_second": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 100000,
+          "description": "걷기 애니메이션 1배속에서 발이 미끄러지지 않는 속도. tools/godot/measure_gait.gd로 잰다"
+        },
+        "run_units_per_second": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 100000
+        },
+        "animations": {
+          "type": "object",
+          "required": [
+            "idle",
+            "walk",
+            "run"
+          ],
+          "properties": {
+            "idle": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "walk": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "run": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "death": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "attack": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          "additionalProperties": false
+        }
+      }
     }
   }
 }

@@ -5,9 +5,10 @@
 *.png binary
 *.psave binary
 
-# 대형 에셋은 Git LFS 사용 (현재 저장소에는 해당 파일 없음)
-*.glb filter=lfs diff=lfs merge=lfs -text
-*.fbx filter=lfs diff=lfs merge=lfs -text
+# 작은 모델 파일(1 MB 안팎)은 일반 Git 파일로 둔다. CI와 새 복제본이 별도 설정 없이 바로 쓸 수 있게 하기 위함.
+# 수 MB를 넘는 모델이 생기면 해당 경로만 LFS로 옮긴다.
+*.glb binary
+*.fbx binary
 *.blend filter=lfs diff=lfs merge=lfs -text
 *.wav filter=lfs diff=lfs merge=lfs -text
 *.ogg filter=lfs diff=lfs merge=lfs -text
