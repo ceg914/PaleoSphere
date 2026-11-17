@@ -31,7 +31,22 @@
 
 ### 종을 추가하려면
 
-`data/species/`에 파일을 하나 더 두면 배치 목록과 도감에 나타납니다. 다만 0.1.0의 행동 모델은 초식동물용이라 `diet`가 `carnivore`여도 식생을 먹습니다. 포식은 Phase 2에서 구현합니다.
+`data/species/`에 파일을 하나 더 두면 배치 목록과 도감에 나타납니다.
+
+- `diet`가 `herbivore`면 식생을 먹고, `carnivore`면 사체를 먹습니다(0.2.0부터).
+- 사냥하게 하려면 `predation.attack_success`를 0보다 크게 줍니다. `carnivore`인데 이 값이 0이면 사냥하지 않고 사체만 찾아 먹습니다.
+
+`predation` 칸(선택):
+
+| 키 | 범위 | 없을 때 | 뜻 |
+|---|---|---|---|
+| `evidence` | 필수 | — | 근거 수준 |
+| `attack_success` | 0~1 | 0 | 공격 한 번의 기본 성공 확률. 초식동물에 0보다 큰 값을 주면 그 파일을 오류로 건너뜀 |
+| `defense` | 0~1 | 0 | 사냥감일 때 공격 성공 확률을 `1 − defense/2`배로 낮추고, 이 확률로 반격 |
+| `max_chase_seconds` | 1~600 | 40 | 달려서 쫓는 최대 시간(이동 기준 초) |
+| `smell_radius_m` | 0~1000 | 120 | 사체를 찾는 반경 |
+
+계산식은 `docs/SIMULATION_SPEC.md` 10장에 있습니다.
 
 ## 세이브 파일 (`*.psave`)
 
@@ -40,8 +55,8 @@ gzip으로 압축한 JSON입니다. 압축하지 않은 JSON도 읽습니다.
 ```json
 {
   "format": "paleosphere-save",
-  "schema_version": 1,
-  "simulation_version": "0.1.0",
+  "schema_version": 2,
+  "simulation_version": "0.2.0",
   "world_seed": "20261116",
   "saved_at_utc": "2026-11-17T02:20:00Z",
   "state_hash": "…16자리 16진수…",
@@ -60,8 +75,10 @@ gzip으로 압축한 JSON입니다. 압축하지 않은 JSON도 읽습니다.
 | `tick`, `next_creature_id` | 시뮬레이션 시각, 다음 개체 id |
 | `world_rng_state`, `world_rng_inc` | 세계 난수 상태(16진수 문자열) |
 | `terrain` | 크기, 수면 높이, 생물군계 id 목록, 높이·생물군계·습윤도·토양 배열(Base64) |
-| `vegetation` | 바이오매스 배열(Base64), 성장·섭식·고사 누계 |
-| `species_ids`, `creatures` | 저장 당시의 종 색인 대응표와 개체 상태 전부(위치, 생리, 행동, 목표, 형질, 난수 상태, 행동 로그) |
+| `vegetation` | 바이오매스·토양 영양 배열(Base64), 성장·섭식·고사 누계, 영양 더함·씀·씻김 누계 |
+| `carcasses` | 사체(위치, 방향, 사망 원인과 시각, 남은 고기·몸 질량, 처음 질량) |
+| `carcass_mass_created`, `_eaten`, `_decomposed` | 사체 질량 장부 |
+| `species_ids`, `creatures` | 저장 당시의 종 색인 대응표와 개체 상태 전부(위치, 생리, 행동, 목표, 형질, 난수 상태, 행동 로그, 사냥 상태와 사냥 성공 수) |
 | `threats` | 진행 중인 위협 자극 |
 | `stats` | 통계 시계열, 사망·배치 누계 |
 | `events`, `events_total` | 최근 사건 로그 |
@@ -87,7 +104,13 @@ gzip으로 압축한 JSON입니다. 압축하지 않은 JSON도 읽습니다.
 
 1. `SimVersion.SaveSchema`를 올립니다.
 2. `SaveMigrations.Register(이전 버전, 변환)`을 추가합니다.
-3. 이전 버전으로 만든 세이브를 `tests/SaveCompatibility/fixtures/`에 남기고 읽기 테스트를 추가합니다. 지금은 `schema1_small.psave`가 있습니다.
+3. 이전 버전으로 만든 세이브를 `tests/SaveCompatibility/fixtures/`에 남기고 읽기 테스트를 추가합니다. 지금은 `schema1_small.psave`(0.1.0, 초식동물만)와 `schema2_predators.psave`(0.2.0, 개체 13, 사체 3)가 있습니다.
+
+| 변환 | 바뀐 것 |
+|---|---|
+| 1 → 2 | 빈 `carcasses` 배열을 넣고, 개체의 행동 점수를 6개에서 7개(사냥)로 늘림. 토양 영양 배열과 사냥 상태는 없으면 기본값(0, −1)으로 읽음 |
+
+스키마 1 세이브는 불러올 수 있지만, 0.1.0과 0.2.0은 규칙이 달라 불러온 뒤의 진행은 0.1.0에서 이어 돌린 결과와 같지 않습니다.
 
 ## 설정 파일
 

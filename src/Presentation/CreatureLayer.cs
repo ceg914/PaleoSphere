@@ -64,18 +64,20 @@ public partial class CreatureLayer : Node3D
         public bool Seen;
     }
 
-    private sealed class Corpse
+    /// <summary>시뮬레이션의 사체 하나에 대응하는 화면 노드.</summary>
+    private sealed class CarcassView
     {
         public Node3D Node = null!;
-        public double Age;
         public float SinkDepth;
+        public float Ground;
+        public bool Seen;
     }
 
     private readonly Dictionary<int, Proxy> _proxies = new();
     private readonly Dictionary<int, Stack<Proxy>> _pool = new();
     private readonly Dictionary<int, SpeciesMeshes> _meshes = new();
     private readonly Dictionary<int, SpeciesModelCache> _models = new();
-    private readonly List<Corpse> _corpses = new();
+    private readonly Dictionary<int, CarcassView> _carcasses = new();
     private readonly List<int> _stale = new();
     private MeshInstance3D _selectionRing = null!;
 
@@ -93,7 +95,6 @@ public partial class CreatureLayer : Node3D
 
     /// <summary>이 거리보다 멀면 개체 위에 위치 표식을 띄운다(멀리서도 찾을 수 있게).</summary>
     public const float MarkerDistance = 90f;
-    private const double CorpseSeconds = 25.0;
 
     public override void _Ready()
     {
@@ -118,8 +119,8 @@ public partial class CreatureLayer : Node3D
         foreach (Stack<Proxy> stack in _pool.Values)
             foreach (Proxy p in stack) p.Root.QueueFree();
         _pool.Clear();
-        foreach (Corpse c in _corpses) c.Node.QueueFree();
-        _corpses.Clear();
+        foreach (CarcassView v in _carcasses.Values) v.Node.QueueFree();
+        _carcasses.Clear();
         _meshes.Clear();
         _models.Clear();
         SelectedId = -1;
@@ -274,7 +275,7 @@ public partial class CreatureLayer : Node3D
                 if (!full.EndsWith(pair.Value, StringComparison.Ordinal)) continue;
                 cache.Animations[pair.Key] = full;
                 Animation anim = player.GetAnimation(full);
-                anim.LoopMode = pair.Key is "idle" or "walk" or "run" ? Animation.LoopModeEnum.Linear : Animation.LoopModeEnum.None;
+                anim.LoopMode = pair.Key is "idle" or "walk" or "run" or "attack" ? Animation.LoopModeEnum.Linear : Animation.LoopModeEnum.None;
             }
         }
         if (!cache.Animations.ContainsKey("idle") || !cache.Animations.ContainsKey("walk") || !cache.Animations.ContainsKey("run"))
@@ -415,45 +416,78 @@ public partial class CreatureLayer : Node3D
         stack.Push(p);
     }
 
-    /// <summary>사망 사건이 났을 때 그 자리에 잠깐 남는 표식. 사체 자원(분해·영양 환원)은 아직 구현되지 않았다.</summary>
-    public void AddCorpseMarker(Vec2 position, TerrainGrid terrain, SpeciesDefinition sp, int speciesIndex, float heading)
+    /// <summary>
+    /// 사체 노드를 만든다. 모델이 있으면 쓰러지는 동작을 재생하고(방금 죽었으면 처음부터, 아니면 마지막 자세로),
+    /// 없으면 코드 메시 몸통을 옆으로 눕힌다.
+    /// </summary>
+    private CarcassView CreateCarcassView(in CarcassSnapshot k, SpeciesDefinition sp, TerrainGrid terrain, long tick)
     {
         float L = sp.BodyLengthM;
-        SpeciesModelCache cache = ModelFor(speciesIndex, sp);
+        // 물가에서 죽으면 바닥에 눕히면 거의 잠겨 보이지 않는다. 그런 사체는 수면 바로 아래에 떠 있게 둔다(화면 표현만).
+        float ground = Mathf.Max(terrain.HeightAt(k.Position), terrain.WaterLevel - 0.25f);
+        SpeciesModelCache cache = ModelFor(k.SpeciesIndex, sp);
         if (cache.Scene != null && cache.Animations.TryGetValue("death", out string? death))
         {
-            // 모델이 있으면 쓰러지는 동작을 한 번 재생하고 마지막 자세로 남긴다.
             Node3D body = cache.Scene.Instantiate<Node3D>();
             body.Scale = Vector3.One * cache.Scale;
             var holder = new Node3D
             {
-                Position = new Vector3(position.X, terrain.HeightAt(position), position.Z),
-                Rotation = new Vector3(0f, Mathf.Pi * 0.5f - heading, 0f),
+                Position = new Vector3(k.Position.X, ground, k.Position.Z),
+                Rotation = new Vector3(0f, Mathf.Pi * 0.5f - k.Heading, 0f),
             };
             holder.AddChild(body);
             AddChild(holder);
-            FindFirst<AnimationPlayer>(body)?.Play(death);
-            _corpses.Add(new Corpse { Node = holder, SinkDepth = L * 0.35f });
-            return;
+            AnimationPlayer? player = FindFirst<AnimationPlayer>(body);
+            if (player != null)
+            {
+                player.Play(death);
+                // 불러온 세계처럼 한참 전에 죽은 사체는 곧바로 쓰러진 자세로 둔다.
+                if (tick - k.DiedTick > 30) player.Seek(player.GetAnimation(death).Length, true);
+            }
+            return new CarcassView { Node = holder, SinkDepth = L * 0.35f, Ground = ground };
         }
 
-        SpeciesMeshes m = MeshesFor(speciesIndex, sp);
+        SpeciesMeshes m = MeshesFor(k.SpeciesIndex, sp);
         var node = new MeshInstance3D
         {
             Mesh = m.Torso,
+            MaterialOverride = SkinMaterial,
             // 옆으로 쓰러진 몸통.
-            RotationDegrees = new Vector3(0f, (position.X * 37f + position.Z * 11f) % 360f, 82f),
-            Position = new Vector3(position.X, Mathf.Max(terrain.HeightAt(position), terrain.WaterLevel) + 0.10f * L, position.Z),
-            MaterialOverride = new StandardMaterial3D
-            {
-                AlbedoColor = new Color(0.20f, 0.17f, 0.14f),
-                Roughness = 1f,
-                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            },
+            Rotation = new Vector3(0f, -k.Heading - Mathf.Pi * 0.5f, Mathf.DegToRad(82f)),
+            Position = new Vector3(k.Position.X, ground + 0.10f * L, k.Position.Z),
         };
         AddChild(node);
-        _corpses.Add(new Corpse { Node = node, SinkDepth = 0f });
+        return new CarcassView { Node = node, SinkDepth = L * 0.3f, Ground = ground + 0.10f * L };
     }
+
+    /// <summary>사체를 시뮬레이션 상태에 맞춘다. 분해된 만큼 땅으로 가라앉고, 다 분해되면 없어진다.</summary>
+    private void UpdateCarcasses(SimSnapshot snapshot, SpeciesRegistry species, TerrainGrid terrain)
+    {
+        foreach (CarcassView v in _carcasses.Values) v.Seen = false;
+        for (int i = 0; i < snapshot.CarcassCount; i++)
+        {
+            CarcassSnapshot k = snapshot.Carcasses[i];
+            if (!_carcasses.TryGetValue(k.Id, out CarcassView? view))
+            {
+                view = CreateCarcassView(k, species[k.SpeciesIndex], terrain, snapshot.Tick);
+                _carcasses[k.Id] = view;
+            }
+            view.Seen = true;
+            float sink = (1f - Mathf.Clamp(k.Remaining, 0f, 1f)) * view.SinkDepth;
+            Vector3 p = view.Node.Position;
+            view.Node.Position = new Vector3(p.X, view.Ground - sink, p.Z);
+        }
+        _stale.Clear();
+        foreach (KeyValuePair<int, CarcassView> kv in _carcasses)
+            if (!kv.Value.Seen) _stale.Add(kv.Key);
+        foreach (int id in _stale)
+        {
+            _carcasses[id].Node.QueueFree();
+            _carcasses.Remove(id);
+        }
+    }
+
+    public int CarcassViewCount => _carcasses.Count;
 
     // ------------------------------------------------------------ 프레임
 
@@ -506,10 +540,8 @@ public partial class CreatureLayer : Node3D
         }
 
         FinishFrame(delta);
+        UpdateCarcasses(snapshot, species, terrain);
     }
-
-    /// <summary>마지막으로 그린 방향(사체를 같은 방향으로 눕히는 데 쓴다).</summary>
-    public float LastHeading(int creatureId) => _proxies.TryGetValue(creatureId, out Proxy? p) ? p.Heading : 0f;
 
     private static void UpdateMarker(Proxy p, float cameraDistance, float L, float bodySize)
     {
@@ -545,6 +577,10 @@ public partial class CreatureLayer : Node3D
         else if (c.Activity == ActivityKind.Rest)
         {
             speedScale = 0.35f;
+        }
+        else if (c.Activity == ActivityKind.Attack && cache.Animations.ContainsKey("attack"))
+        {
+            key = "attack";
         }
 
         string anim = cache.Animations[key];
@@ -596,6 +632,7 @@ public partial class CreatureLayer : Node3D
                 ActivityKind.Drink => 0.72f,
                 ActivityKind.Rest => 0.30f,
                 ActivityKind.Run => -0.10f,
+                ActivityKind.Attack => 0.35f * Mathf.Sin(p.Phase * 6f),
                 _ => 0.04f + (moving ? 0.03f * Mathf.Sin(p.Phase * 2f) : 0f),
             };
             float blend = Mathf.Min(1f, dt * 5f);
@@ -635,28 +672,5 @@ public partial class CreatureLayer : Node3D
             _proxies.Remove(id);
         }
         if (SelectedPosition == null) _selectionRing.Visible = false;
-
-        for (int i = _corpses.Count - 1; i >= 0; i--)
-        {
-            Corpse corpse = _corpses[i];
-            corpse.Age += delta;
-            if (corpse.Age >= CorpseSeconds)
-            {
-                corpse.Node.QueueFree();
-                _corpses.RemoveAt(i);
-                continue;
-            }
-            double remaining = CorpseSeconds - corpse.Age;
-            if (corpse.Node is MeshInstance3D mesh && mesh.MaterialOverride is StandardMaterial3D material)
-            {
-                float fade = (float)Math.Clamp(remaining / 6.0, 0.0, 1.0);
-                material.AlbedoColor = new Color(material.AlbedoColor.R, material.AlbedoColor.G, material.AlbedoColor.B, fade);
-            }
-            else if (remaining < 8.0 && corpse.SinkDepth > 0f)
-            {
-                // 모델 사체는 마지막 몇 초 동안 땅으로 가라앉는다.
-                corpse.Node.Position -= new Vector3(0f, (float)(corpse.SinkDepth / 8.0 * delta), 0f);
-            }
-        }
     }
 }

@@ -8,7 +8,8 @@
 
 | 파일 | 원본 | 제작자 | 라이선스 | 수정 여부 |
 |---|---|---|---|---|
-| `assets/models/dinosaurs/Triceratops.fbx` | Animated Dinosaur Pack (2018), <https://quaternius.com/packs/animateddinosaurs.html> 의 다운로드(Google Drive) FBX 폴더. 2026-11-17 받음 | Quaternius | CC0 1.0 | 원본 그대로. 크기·방향·자세 보정은 실행 중에 코드로 한다 |
+| `assets/models/dinosaurs/Triceratops.fbx` | Animated Dinosaur Pack (2018), <https://quaternius.com/packs/animateddinosaurs.html> 의 다운로드(Google Drive) FBX 폴더. 2026-11-17 받음. SHA-256 `ad66b51c…` | Quaternius | CC0 1.0 | 원본 그대로. 크기·방향·자세 보정은 실행 중에 코드로 한다 |
+| `assets/models/dinosaurs/Trex.fbx` | 같은 팩, 같은 날 받은 파일. SHA-256 `db4ae6f6…` | Quaternius | CC0 1.0 | 원본 그대로. 0.2.0(포식)에서 추가 |
 
 라이선스 근거:
 
@@ -16,7 +17,7 @@
 - 다만 quaternius.com의 일반 라이선스 페이지는 2026-08-28자 **Quaternius Asset License(QAL) v1.0**으로 바뀌어 있습니다. QAL은 게임에 넣어 배포하는 것은 허용하지만 에셋 자체를 따로 재배포하는 것은 금지합니다. QAL 7조는 "변경은 이미 받은 에셋에 소급하지 않는다"고 적고 있고, 이 팩은 CC0 문서와 함께 배포되고 있어 CC0로 판단했습니다.
 - 이 판단이 걱정되면 모델 파일을 저장소에서 빼고 빌드할 때만 받아 오도록 바꿀 수 있습니다. 모델이 없으면 게임은 코드로 만든 메시로 자동 대체합니다.
 
-같은 팩의 다른 5종(티라노사우루스, 벨로키랍토르, 스테고사우루스, 아파토사우루스, 파라사우롤로푸스)은 아직 저장소에 넣지 않았습니다. 육식동물을 추가할 때(Phase 2) 같은 절차로 넣습니다.
+같은 팩의 나머지 4종(벨로키랍토르, 스테고사우루스, 아파토사우루스, 파라사우롤로푸스)은 저장소에 넣지 않았습니다. 이 가운데 트리케라톱스·티라노사우루스와 같은 시기·지역(마스트리흐트절 북아메리카)에 산 종은 없습니다.
 
 코드로 만든 것:
 

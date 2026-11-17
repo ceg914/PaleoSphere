@@ -359,6 +359,14 @@ public partial class CodexDialog : AcceptDialog
         foreach (string id in sp.PlacementBiomes)
             if (biomes.TryGetIndex(id, out int bi)) places.Add(Loc.Name(biomes[bi].NameKo, biomes[bi].NameEn));
         if (places.Count > 0) sb.Append("[b]").Append(Loc.T("codex.placement")).Append("[/b]  ").Append(string.Join(", ", places)).Append('\n');
+        if (sp.IsPredator || sp.Defense > 0f)
+        {
+            sb.Append("[b]").Append(Loc.T("codex.predation")).Append("[/b]  ")
+                .Append(sp.IsPredator
+                    ? Loc.F("codex.predline.hunter", sp.AttackSuccess * 100f, sp.Defense, sp.MaxChaseSeconds, sp.SmellRadiusM)
+                    : Loc.F("codex.predline.prey", sp.Defense))
+                .Append("  ").Append(Badge(EvidenceLevel.Simplified)).Append('\n');
+        }
 
         sb.Append("\n[b]").Append(Loc.T("codex.facts")).Append("[/b]\n");
         foreach (FactEntry f in sp.Facts)

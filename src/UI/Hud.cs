@@ -497,6 +497,8 @@ public partial class Hud : Control
     {
         List<StatSample> samples = sim.Stats.Samples;
         GraphControl.Series veg = _vegetationGraph.GetSeries(0, Loc.T("graph.vegetation"), UiTheme.Series[0]);
+        GraphControl.Series meat = _vegetationGraph.GetSeries(1, Loc.T("graph.meat"), UiTheme.Series[3]);
+        meat.Points.Clear();
         GraphControl.Series energy = _conditionGraph.GetSeries(0, Loc.T("graph.energy"), UiTheme.Series[2]);
         GraphControl.Series hydration = _conditionGraph.GetSeries(1, Loc.T("graph.hydration"), UiTheme.Series[1]);
         veg.Points.Clear();
@@ -505,11 +507,22 @@ public partial class Hud : Control
         foreach (StatSample s in samples)
         {
             veg.Points.Add(new Vector2(s.Day, s.VegetationKg / 1000f));
+            meat.Points.Add(new Vector2(s.Day, s.CarcassMeatKg / 1000f));
             energy.Points.Add(new Vector2(s.Day, s.MeanEnergy));
             hydration.Points.Add(new Vector2(s.Day, s.MeanHydration));
         }
         _vegetationGraph.QueueRedraw();
         _conditionGraph.QueueRedraw();
+    }
+
+    /// <summary>사냥 사건 문구. Detail은 "사냥감id|사냥감종id".</summary>
+    private static string PredationText(SimulationCore sim, string predatorName, in SimEvent e)
+    {
+        string[] parts = e.Detail.Split('|');
+        string preyName = parts.Length > 1 ? parts[1] : "?";
+        if (parts.Length > 1 && sim.World.Species.TryGetIndex(parts[1], out int pi))
+            preyName = Loc.Name(sim.World.Species[pi].NameKo, sim.World.Species[pi].NameEn);
+        return Loc.F("event.predation", predatorName, e.CreatureId, preyName, parts[0]);
     }
 
     private static string FormatDeaths(SimulationCore sim, int[] alive)
@@ -553,6 +566,7 @@ public partial class Hud : Control
                 SimEventType.DayStarted => "[color=#9aa8a6]" + Loc.T("event.day") + "[/color]",
                 SimEventType.SeasonChanged => Loc.F("event.season", Loc.T("season." + e.Detail)),
                 SimEventType.CommandRejected => "[color=#f2b84d]" + Loc.F("event.rejected", Loc.T("cmd." + e.Detail)) + "[/color]",
+                SimEventType.Predation => "[color=#e06b5c]" + PredationText(sim, name, e) + "[/color]",
                 _ => e.Detail,
             };
             sb.Append("[color=#9aa8a6]D").Append(e.Day).Append(' ').Append(((int)e.Hour).ToString("00")).Append(':').Append(((int)(e.Hour * 60f) % 60).ToString("00")).Append("[/color] ").Append(text).Append('\n');

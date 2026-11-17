@@ -16,7 +16,7 @@ namespace PaleoSphere.App;
 /// 앱 진입점. 데이터를 읽고 세션·3D 화면·UI를 만든 뒤, 프레임마다
 /// 입력 → 명령 → 시뮬레이션 진행 → 스냅샷 표시 순서로 돌린다.
 /// 명령줄 인자(-- 뒤): --selftest, --scenario=id, --screenshot=경로, --frames=N, --warmup-ticks=N,
-/// --autoplay=배속, --select, --select-activity=Eat|Drink|Rest|Walk|Run, --zoom=거리, --hour=시각, --tab=N, --hide-start, --benchmark=개체수, --seconds=N, --uitest
+/// --autoplay=배속, --select, --select-activity=Eat|Drink|Rest|Walk|Run|Attack, --select-species=종id, --search-days=N, --zoom=거리, --hour=시각, --tab=N, --hide-start, --benchmark=개체수, --seconds=N, --uitest
 /// </summary>
 public partial class Main : Node
 {
@@ -42,7 +42,6 @@ public partial class Main : Node
     private Vec2? _cursorPoint;
     private bool _rightDragging;
     private string _lastSlot = "";
-    private SimulationCore? _subscribedSim;
 
     private readonly Dictionary<string, string> _args = new();
     private int _frame;
@@ -247,19 +246,6 @@ public partial class Main : Node
         _vegetation.Rebuild(sim);
         _camera.SetTerrain(sim.World.Terrain);
         _hud?.OnWorldReplaced();
-        if (_subscribedSim != sim)
-        {
-            sim.Events.Subscribe(OnSimEvent);
-            _subscribedSim = sim;
-        }
-    }
-
-    private void OnSimEvent(SimEvent e)
-    {
-        SimulationCore? sim = _session?.Sim;
-        if (sim == null || e.Type != SimEventType.CreatureDied) return;
-        if (sim.World.Species.TryGetIndex(e.SpeciesId, out int index))
-            _creatures.AddCorpseMarker(e.Position, sim.World.Terrain, sim.World.Species[index], index, _creatures.LastHeading(e.CreatureId));
     }
 
     // ------------------------------------------------------------ 프레임
@@ -473,14 +459,25 @@ public partial class Main : Node
 
         if (_args.TryGetValue("autoplay", out string? speed) && float.TryParse(speed, out float s)) _hud.SetSpeed(s);
         if (_args.ContainsKey("tab")) _hud.SelectDockTab(ArgInt("tab", 0));
+        if (!_args.ContainsKey("select-activity") && _args.TryGetValue("hour", out string? hourText) && float.TryParse(hourText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float wantedHour))
+        {
+            // 화면 확인용: 원하는 시각이 될 때까지 진행한다(최대 하루).
+            for (int i = 0; i < sim.World.Config.TicksPerDay && Math.Abs(sim.Clock.TimeOfDayHours - wantedHour) > 0.05f; i++) sim.Step();
+        }
         if (_args.TryGetValue("select-activity", out string? activityName) && Enum.TryParse(activityName, true, out PaleoSphere.Creatures.ActivityKind wantedActivity))
         {
-            // 화면 확인용: 해당 동작을 하는 개체가 나올 때까지 진행한 뒤 고른다(최대 하루).
+            // 화면 확인용: 해당 동작을 하는 개체가 나올 때까지 진행한 뒤 고른다(기본 하루, --search-days로 늘림).
+            // --hour를 함께 주면 밝은 낮(8~16시)에 그 동작을 하는 개체만 고른다.
             PaleoSphere.Creatures.Creature? found = null;
-            for (int i = 0; i < sim.World.Config.TicksPerDay && found == null; i++)
+            bool daylightOnly = _args.ContainsKey("hour");
+            long searchTicks = (long)sim.World.Config.TicksPerDay * Math.Max(1, ArgInt("search-days", 1));
+            for (long i = 0; i < searchTicks && found == null; i++)
             {
+                if (daylightOnly && (sim.Clock.TimeOfDayHours < 8f || sim.Clock.TimeOfDayHours > 16f)) { sim.Step(); continue; }
+                _args.TryGetValue("select-species", out string? wantedSpecies);
                 foreach (PaleoSphere.Creatures.Creature c in sim.Creatures)
                 {
+                    if (wantedSpecies != null && sim.World.Species[c.SpeciesIndex].Id != wantedSpecies) continue;
                     if (c.Activity != wantedActivity || (wantedActivity == PaleoSphere.Creatures.ActivityKind.Rest && c.Fatigue > 0.5f)) continue;
                     // 동작을 시작한 지 조금 지난 개체를 고른다.
                     if (sim.Clock.Tick - c.BehaviorStartTick < 300) continue;
@@ -505,11 +502,6 @@ public partial class Main : Node
         }
         if (_args.TryGetValue("zoom", out string? zoom) && float.TryParse(zoom, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float distance))
             _camera.SetDistance(distance);
-        if (_args.TryGetValue("hour", out string? hourText) && float.TryParse(hourText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float wantedHour))
-        {
-            // 화면 확인용: 원하는 시각이 될 때까지 진행한다(최대 하루).
-            for (int i = 0; i < sim.World.Config.TicksPerDay && Math.Abs(sim.Clock.TimeOfDayHours - wantedHour) > 0.05f; i++) sim.Step();
-        }
         if (_args.ContainsKey("codex")) _codexDialog?.ShowSpecies(_data!.Species[0], _data.Biomes);
         if (_args.ContainsKey("newdialog")) _newDialog?.PopupCentered();
     }

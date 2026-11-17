@@ -39,8 +39,9 @@ public partial class InspectorPanel : PanelContainer
 
     private static readonly BehaviorKind[] ScoreOrder =
     {
-        BehaviorKind.Forage, BehaviorKind.Drink, BehaviorKind.Rest, BehaviorKind.Flee, BehaviorKind.Explore, BehaviorKind.Idle,
+        BehaviorKind.Forage, BehaviorKind.Hunt, BehaviorKind.Drink, BehaviorKind.Rest, BehaviorKind.Flee, BehaviorKind.Explore, BehaviorKind.Idle,
     };
+    private Label _target = null!;
 
     public override void _Ready()
     {
@@ -85,6 +86,9 @@ public partial class InspectorPanel : PanelContainer
         _creatureBox.AddChild(UiTheme.Heading(Loc.T("inspector.behavior")));
         _behavior = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         _creatureBox.AddChild(_behavior);
+        _target = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, Visible = false };
+        _target.AddThemeColorOverride("font_color", UiTheme.Bad);
+        _creatureBox.AddChild(_target);
         _reason = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         _reason.AddThemeColorOverride("font_color", UiTheme.Warn);
         _creatureBox.AddChild(_reason);
@@ -159,6 +163,7 @@ public partial class InspectorPanel : PanelContainer
         BehaviorKind.Forage => Loc.F("amount.kg", amount),
         BehaviorKind.Drink => Loc.F("amount.water", amount * 100f),
         BehaviorKind.Rest => Loc.F("amount.hours", amount),
+        BehaviorKind.Hunt => Loc.F("amount.kills", amount),
         _ => "",
     };
 
@@ -211,6 +216,22 @@ public partial class InspectorPanel : PanelContainer
         string amount = AmountText(d.Behavior, d.BoutAmount);
         _behavior.Text = $"{Loc.Behavior(d.Behavior)} · {Loc.Activity(d.Activity)}" + (amount.Length > 0 && d.BoutAmount > 0f ? $" · {amount}" : "");
         _reason.Text = Loc.T("inspector.reason") + ": " + ReasonText(d.Reason, d.Behavior, d.Scores[(int)d.Behavior], d.Energy, d.Hydration, d.Fear);
+
+        // 육식동물: 쫓는 사냥감이나 먹는 사체.
+        string target = "";
+        if (d.Behavior == BehaviorKind.Hunt && d.TargetEntityId >= 0 && sim.TryGetCreature(d.TargetEntityId, out PaleoSphere.Creatures.Creature? prey) && prey != null)
+        {
+            SpeciesDefinition psp = sim.World.Species[prey.SpeciesIndex];
+            target = Loc.F("inspector.hunting", Loc.Name(psp.NameKo, psp.NameEn), prey.Id, Vec2.Distance(d.Position, prey.Position));
+        }
+        else if (d.Behavior == BehaviorKind.Forage && sp.Diet == Diet.Carnivore && d.TargetEntityId >= 0 && sim.World.FindCarcass(d.TargetEntityId) is { } carcass)
+        {
+            SpeciesDefinition csp = sim.World.Species[carcass.SpeciesIndex];
+            target = Loc.F("inspector.scavenging", Loc.Name(csp.NameKo, csp.NameEn), carcass.Id, carcass.MeatKg);
+        }
+        if (sp.IsPredator) target += (target.Length > 0 ? " · " : "") + Loc.F("inspector.kills", d.Kills);
+        _target.Text = target;
+        _target.Visible = target.Length > 0;
 
         for (int i = 0; i < ScoreOrder.Length; i++)
         {
