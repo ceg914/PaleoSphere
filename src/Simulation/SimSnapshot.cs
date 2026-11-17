@@ -23,6 +23,20 @@ public struct CreatureSnapshot
     public BehaviorKind Behavior;
 }
 
+/// <summary>사체 한 구의 복사본.</summary>
+public struct CarcassSnapshot
+{
+    public int Id;
+    public int SpeciesIndex;
+    public Vec2 Position;
+    public float Heading;
+    public long DiedTick;
+
+    /// <summary>남은 정도(0~1).</summary>
+    public float Remaining;
+    public float MeatKg;
+}
+
 /// <summary>
 /// 표현 계층에 넘기는 읽기 전용 스냅샷. 코어 상태의 복사본이라 UI가 값을 바꿔도 시뮬레이션에 영향이 없다.
 /// </summary>
@@ -31,6 +45,8 @@ public sealed class SimSnapshot
     public long Tick;
     public int Count;
     public CreatureSnapshot[] Creatures = Array.Empty<CreatureSnapshot>();
+    public int CarcassCount;
+    public CarcassSnapshot[] Carcasses = Array.Empty<CarcassSnapshot>();
 
     public bool TryFind(int id, out CreatureSnapshot snapshot)
     {
@@ -64,5 +80,9 @@ public sealed class CreatureDetails
     public float[] Scores = new float[BehaviorKinds.Count];
     public DecisionReason Reason;
     public long LastDecisionTick;
+
+    /// <summary>쫓는 사냥감이나 찾아가는 사체의 id(-1이면 없음).</summary>
+    public int TargetEntityId = -1;
+    public int Kills;
     public List<BehaviorLogEntry> Log = new();
 }

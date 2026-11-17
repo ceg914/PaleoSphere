@@ -353,6 +353,34 @@ public class SaveLoadTests : IDisposable
     }
 
     [Fact]
+    public void V2Fixture_WithPredatorsAndCarcasses_Loads()
+    {
+        // 스키마 2(시뮬레이션 0.2.0)에서 만든 샘플: 트리케라톱스 11, 티라노사우루스 2, 사체 3.
+        string path = Path.Combine(TestData.FixturesDir, "schema2_predators.psave");
+        LoadResult r = SaveSerializer.Deserialize(File.ReadAllBytes(path), TestData.Data);
+        Assert.True(r.Ok, string.Join(" / ", r.Errors));
+        Assert.Equal(2, r.Header!.SchemaVersion);
+        SimulationCore sim = r.Sim!;
+        Assert.Equal(13, sim.CreatureCount);
+        Assert.Equal(3, sim.World.Carcasses.Count);
+        Assert.Equal(3, sim.Stats.TotalDeathsByCause(DeathCause.Predation));
+        Assert.True(sim.World.Vegetation.SumNutrient() > 0);
+        TestData.Run(sim, 300);
+    }
+
+    [Fact]
+    public void V1Fixture_IsMigrated_ToCurrentSchema()
+    {
+        string path = Path.Combine(TestData.FixturesDir, "schema1_small.psave");
+        LoadResult r = SaveSerializer.Deserialize(File.ReadAllBytes(path), TestData.Data);
+        Assert.True(r.Ok, string.Join(" / ", r.Errors));
+        Assert.Contains(r.Warnings, w => w.Contains("1 → 2"));
+        Assert.Empty(r.Sim!.World.Carcasses);
+        // 스키마 1의 행동 점수 6개는 7개(사냥 0)로 채워진다.
+        Assert.All(r.Sim.Creatures, c => Assert.Equal(0f, c.LastScores[(int)BehaviorKind.Hunt]));
+    }
+
+    [Fact]
     public void V1Fixture_StillLoads()
     {
         // 스키마 1 시절에 만든 세이브 샘플. 형식을 바꾼 뒤에도 (마이그레이션을 거쳐) 읽혀야 한다.
@@ -399,7 +427,8 @@ public class SaveMigrationTests
             Assert.True(SaveMigrations.CanMigrate(0));
             var log = new System.Collections.Generic.List<string>();
             JsonObject upgraded = SaveMigrations.Upgrade(node, 0, log);
-            Assert.Single(log);
+            // 0→1(이 테스트가 등록한 것)과 1→2(내장) 두 단계가 적용된다.
+            Assert.Equal(2, log.Count);
             header.SchemaVersion = SimVersion.SaveSchema;
             byte[] rebuilt = SaveSerializer.BuildFile(Encoding.UTF8.GetBytes(upgraded.ToJsonString()), header);
             LoadResult r = SaveSerializer.Deserialize(rebuilt, TestData.Data);

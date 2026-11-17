@@ -11,6 +11,9 @@ public struct StatSample
     public float Day;
     public int[] Counts;
     public float VegetationKg;
+
+    /// <summary>사체에 남은 고기(kg).</summary>
+    public float CarcassMeatKg;
     public float MeanEnergy;
     public float MeanHydration;
     public int TotalDeaths;
@@ -67,7 +70,7 @@ public sealed class PopulationStats
         return total;
     }
 
-    public void Sample(long tick, float day, IReadOnlyList<Creature> creatures, double vegetationKg)
+    public void Sample(long tick, float day, IReadOnlyList<Creature> creatures, double vegetationKg, double carcassMeatKg = 0)
     {
         var counts = new int[SpeciesCount];
         double energy = 0, hydration = 0;
@@ -85,6 +88,7 @@ public sealed class PopulationStats
             Day = day,
             Counts = counts,
             VegetationKg = (float)vegetationKg,
+            CarcassMeatKg = (float)carcassMeatKg,
             MeanEnergy = n > 0 ? (float)(energy / n) : 0f,
             MeanHydration = n > 0 ? (float)(hydration / n) : 0f,
             TotalDeaths = TotalNaturalDeaths(),

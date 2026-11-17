@@ -58,6 +58,18 @@ public sealed class Creature
     public int TargetEntityId = -1;
     public long NextRetargetTick;
 
+    // 사냥 상태(육식동물).
+    public long ChaseStartTick = -1;
+    public long NextAttackTick;
+    public long HuntCooldownUntilTick;
+    public int Kills;
+
+    /// <summary>사냥당해 죽었을 때 잡은 개체의 id. 아니면 -1.</summary>
+    public int KilledBy = -1;
+
+    /// <summary>다가가지 못해 포기한 사체(다시 고르지 않는다). 없으면 -1.</summary>
+    public int IgnoredCarcassId = -1;
+
     public Vec2 ThreatPosition;
     public long ThreatUntilTick = -1;
 
@@ -96,6 +108,7 @@ public sealed class Creature
         h.Add(Health); h.Add(Energy); h.Add(Hydration); h.Add(Fatigue); h.Add(Fear);
         h.Add((int)Behavior); h.Add((int)Activity); h.Add(BehaviorStartTick);
         h.Add(HasTarget); h.Add(Target); h.Add(TargetEntityId); h.Add(NextRetargetTick);
+        h.Add(ChaseStartTick); h.Add(NextAttackTick); h.Add(HuntCooldownUntilTick); h.Add(Kills); h.Add(KilledBy); h.Add(IgnoredCarcassId);
         h.Add(ThreatPosition); h.Add(ThreatUntilTick);
         h.Add(TraitBodySize); h.Add(TraitMetabolism); h.Add(TraitSpeed);
         h.Add(ParentA); h.Add(ParentB);

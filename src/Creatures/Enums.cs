@@ -16,6 +16,9 @@ public enum BehaviorKind : byte
     Rest = 3,
     Flee = 4,
     Explore = 5,
+
+    /// <summary>육식동물의 사냥(사냥감 찾기·추격·공격).</summary>
+    Hunt = 6,
 }
 
 /// <summary>지금 몸이 하고 있는 동작. 3D 표시와 대사량 계산에 쓴다.</summary>
@@ -27,6 +30,9 @@ public enum ActivityKind : byte
     Eat = 3,
     Drink = 4,
     Rest = 5,
+
+    /// <summary>사냥감을 공격하는 중(제자리에서 덤빔).</summary>
+    Attack = 6,
 }
 
 public enum DeathCause : byte
@@ -72,11 +78,20 @@ public enum BehaviorResult : byte
     TargetBlocked = 3,
     NoFoodFound = 4,
     NoWaterReachable = 5,
+
+    /// <summary>사냥: 지각 범위에 사냥감이 없다.</summary>
+    NoPreyFound = 6,
+
+    /// <summary>사냥: 추격 시간이 다하거나 지쳐서 포기했다.</summary>
+    ChaseFailed = 7,
+
+    /// <summary>사냥: 사냥감을 잡았다.</summary>
+    Kill = 8,
 }
 
 public static class BehaviorKinds
 {
-    public const int Count = 6;
+    public const int Count = 7;
 
     public static string ToId(BehaviorKind b) => b switch
     {
@@ -86,6 +101,7 @@ public static class BehaviorKinds
         BehaviorKind.Rest => "rest",
         BehaviorKind.Flee => "flee",
         BehaviorKind.Explore => "explore",
+        BehaviorKind.Hunt => "hunt",
         _ => "idle",
     };
 

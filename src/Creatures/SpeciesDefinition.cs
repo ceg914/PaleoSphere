@@ -84,6 +84,21 @@ public sealed class SpeciesDefinition
     public float ProxyColorB { get; init; } = 0.5f;
     public string ProxyShape { get; init; } = "quadruped";
 
+    // --- 포식 관계 (게임적 단순화) ---
+    /// <summary>공격 한 번이 성공할 기본 확률(0이면 사냥하지 않는다).</summary>
+    public float AttackSuccess { get; init; }
+
+    /// <summary>공격받았을 때 버티고 반격하는 정도(0~1). 공격 성공 확률을 낮추고 실패한 공격자에게 상처를 준다.</summary>
+    public float Defense { get; init; }
+
+    /// <summary>추격을 포기하기까지의 시간(초, 이동 기준).</summary>
+    public float MaxChaseSeconds { get; init; } = 40f;
+
+    /// <summary>사체 냄새를 맡는 거리(m).</summary>
+    public float SmellRadiusM { get; init; } = 120f;
+
+    public bool IsPredator => Diet == Diet.Carnivore && AttackSuccess > 0f;
+
     /// <summary>3D 모델. 없거나 불러오지 못하면 코드로 만든 메시를 쓴다.</summary>
     public SpeciesModel? Model { get; init; }
 

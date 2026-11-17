@@ -170,6 +170,18 @@ public static class DefinitionLoaders
             color = proxy.Color("color", Gray);
         }
 
+        float attackSuccess = 0f, defense = 0f, maxChase = 40f, smell = 120f;
+        if (f.TryObj("predation", out JsonFields pred, required: false))
+        {
+            pred.Evidence();
+            attackSuccess = pred.Num("attack_success", 0f, 1f, 0f);
+            defense = pred.Num("defense", 0f, 1f, 0f);
+            maxChase = pred.Num("max_chase_seconds", 1f, 600f, 40f);
+            smell = pred.Num("smell_radius_m", 0f, 1000f, 120f);
+            if (attackSuccess > 0f && diet == Diet.Herbivore)
+                report.Error(source, "초식동물에는 'predation.attack_success'를 줄 수 없습니다.");
+        }
+
         SpeciesModel? model = null;
         if (f.TryObj("model", out JsonFields mf, required: false))
             model = ParseModel(mf, doc.RootElement.GetProperty("model"), source, report);
@@ -237,6 +249,10 @@ public static class DefinitionLoaders
             ProxyColorG = color[1],
             ProxyColorB = color[2],
             Model = model,
+            AttackSuccess = attackSuccess,
+            Defense = defense,
+            MaxChaseSeconds = maxChase,
+            SmellRadiusM = smell,
             Facts = facts,
             Sources = sources,
         };

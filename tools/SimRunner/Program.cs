@@ -81,8 +81,12 @@ public static class Program
 
         float size = sim.World.Terrain.WorldSize;
         var center = new Vec2(size / 2, size / 2);
-        foreach (ScenarioPopulation p in scenario.Populations)
-            sim.Enqueue(new SpawnCreaturesCommand(p.SpeciesId, countOverride > 0 ? Math.Min(countOverride, 500) : p.Count, center, size * 0.45f));
+        for (int pi = 0; pi < scenario.Populations.Count; pi++)
+        {
+            ScenarioPopulation p = scenario.Populations[pi];
+            int count = pi == 0 && countOverride > 0 ? Math.Min(countOverride, 500) : p.Count;
+            sim.Enqueue(new SpawnCreaturesCommand(p.SpeciesId, count, center, size * 0.45f));
+        }
         for (int extra = countOverride - 500; extra > 0; extra -= 500)
             sim.Enqueue(new SpawnCreaturesCommand(scenario.Populations[0].SpeciesId, Math.Min(extra, 500), center, size * 0.45f));
         sim.ApplyPendingCommands();
@@ -145,7 +149,15 @@ public static class Program
         PopulationStats st = sim.Stats;
         Console.WriteLine($"--- {days:0.##}일({totalTicks}틱) 실행: {runMs:0} ms, 틱당 평균 {runMs / totalTicks * 1000:0.0} µs, 최대 {sim.Profiler.MaxTickMs:0.00} ms");
         Console.WriteLine($"    구간 평균(ms): 식생 {sim.Profiler.SectionAverageMs(TickProfiler.Section.Vegetation):0.000}(갱신 틱만), 의사결정·생리 {sim.Profiler.SectionAverageMs(TickProfiler.Section.Brain):0.000}, 이동 {sim.Profiler.SectionAverageMs(TickProfiler.Section.Movement):0.000}");
-        Console.WriteLine($"    생존 {sim.CreatureCount}, 아사 {st.TotalDeathsByCause(DeathCause.Starvation)}, 탈수 {st.TotalDeathsByCause(DeathCause.Dehydration)}");
+        Console.WriteLine($"    생존 {sim.CreatureCount}, 아사 {st.TotalDeathsByCause(DeathCause.Starvation)}, 탈수 {st.TotalDeathsByCause(DeathCause.Dehydration)}, 포식 {st.TotalDeathsByCause(DeathCause.Predation)}");
+        for (int s = 0; s < sim.World.Species.Count; s++)
+        {
+            int alive = 0, kills = 0;
+            foreach (Creature c in sim.Creatures) if (c.SpeciesIndex == s) { alive++; kills += c.Kills; }
+            Console.WriteLine($"    {sim.World.Species[s].Id}: 배치 {st.Spawned[s]}, 생존 {alive}, 아사 {st.DeathsOf(s, DeathCause.Starvation)}, 탈수 {st.DeathsOf(s, DeathCause.Dehydration)}, 포식당함 {st.DeathsOf(s, DeathCause.Predation)}, 사냥 성공(생존 개체 합) {kills}");
+        }
+        var world = sim.World;
+        Console.WriteLine($"    사체 질량 장부: 생김 {world.CarcassMassCreated / 1000:0.0} t = 먹힘 {world.CarcassMassEaten / 1000:0.0} + 분해 {world.CarcassMassDecomposed / 1000:0.0} + 남음 {SumRemains(sim) / 1000:0.0} t | 토양 영양 더함 {veg2(sim).TotalNutrientAdded:0} 씀 {veg2(sim).TotalNutrientUsed:0} 씻김 {veg2(sim).TotalNutrientLeached:0} 남음 {veg2(sim).SumNutrient():0} kg");
         var veg = sim.World.Vegetation;
         double expected = veg.InitialTotal + veg.TotalGrown - veg.TotalConsumed - veg.TotalDieback;
         Console.WriteLine($"    식생 {veg.SumBiomass() / 1000:0.00} t (성장 {veg.TotalGrown / 1000:0.00}, 섭식 {veg.TotalConsumed / 1000:0.00}, 고사 {veg.TotalDieback / 1000:0.00}; 수지 오차 {Math.Abs(expected - veg.SumBiomass()):0.000} kg)");
@@ -173,18 +185,32 @@ public static class Program
         return 0;
     }
 
+    private static double SumRemains(SimulationCore sim)
+    {
+        double t = 0;
+        foreach (PaleoSphere.Ecology.Carcass k in sim.World.Carcasses) t += k.RemainsKg;
+        return t;
+    }
+
+    private static PaleoSphere.Ecology.VegetationGrid veg2(SimulationCore sim) => sim.World.Vegetation;
+
     private static void PrintDay(SimulationCore sim)
     {
         var counts = new int[BehaviorKinds.Count];
+        var perSpecies = new int[sim.World.Species.Count];
         double e = 0, h = 0, f = 0;
         foreach (Creature c in sim.Creatures)
         {
             counts[(int)c.Behavior]++;
+            perSpecies[c.SpeciesIndex]++;
             e += c.Energy;
             h += c.Hydration;
             f += c.Fatigue;
         }
         int n = Math.Max(1, sim.CreatureCount);
-        Console.WriteLine($"Day {sim.Clock.Day,3} {sim.Clock.TimeOfDayHours,4:0.0}h 개체 {sim.CreatureCount,4} | 에너지 {e / n:0.00} 수분 {h / n:0.00} 피로 {f / n:0.00} | 식생 {sim.World.Vegetation.LastTotal / 1000,6:0.0} t | 대기 {counts[0]} 섭식 {counts[1]} 음수 {counts[2]} 휴식 {counts[3]} 도주 {counts[4]} 탐색 {counts[5]}");
+        var species = new System.Text.StringBuilder();
+        for (int s = 0; s < perSpecies.Length; s++)
+            species.Append(sim.World.Species[s].Id.Split('_')[0]).Append(' ').Append(perSpecies[s]).Append(' ');
+        Console.WriteLine($"Day {sim.Clock.Day,3} {sim.Clock.TimeOfDayHours,4:0.0}h {species}| 에너지 {e / n:0.00} 수분 {h / n:0.00} 피로 {f / n:0.00} | 식생 {sim.World.Vegetation.LastTotal / 1000,6:0.0} t | 사체 {sim.World.Carcasses.Count} 고기 {sim.CarcassMeatKg() / 1000:0.0} t 영양 {sim.World.Vegetation.SumNutrient():0} kg | 섭식 {counts[1]} 음수 {counts[2]} 휴식 {counts[3]} 도주 {counts[4]} 탐색 {counts[5]} 사냥 {counts[6]}");
     }
 }

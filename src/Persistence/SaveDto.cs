@@ -15,6 +15,12 @@ public sealed class SaveStateDto
     public TerrainDto? Terrain { get; set; }
     public VegetationDto? Vegetation { get; set; }
     public List<ThreatDto> Threats { get; set; } = new();
+
+    /// <summary>사체(스키마 2부터).</summary>
+    public List<CarcassDto> Carcasses { get; set; } = new();
+    public double CarcassMassCreated { get; set; }
+    public double CarcassMassEaten { get; set; }
+    public double CarcassMassDecomposed { get; set; }
     public List<string> SpeciesIds { get; set; } = new();
     public List<CreatureDto> Creatures { get; set; } = new();
     public StatsDto? Stats { get; set; }
@@ -62,10 +68,31 @@ public sealed class TerrainDto
 public sealed class VegetationDto
 {
     public string Biomass { get; set; } = "";
+
+    /// <summary>토양 영양 배열(스키마 2부터). 비어 있으면 0으로 본다.</summary>
+    public string Nutrient { get; set; } = "";
+    public double TotalNutrientAdded { get; set; }
+    public double TotalNutrientUsed { get; set; }
+    public double TotalNutrientLeached { get; set; }
     public double InitialTotal { get; set; }
     public double TotalGrown { get; set; }
     public double TotalConsumed { get; set; }
     public double TotalDieback { get; set; }
+}
+
+public sealed class CarcassDto
+{
+    public int Id { get; set; }
+    public int Species { get; set; }
+    public float X { get; set; }
+    public float Z { get; set; }
+    public float Heading { get; set; }
+    public int Cause { get; set; }
+    public long DiedTick { get; set; }
+    public float MeatKg { get; set; }
+    public float InitialMeatKg { get; set; }
+    public float RemainsKg { get; set; }
+    public float InitialMassKg { get; set; }
 }
 
 public sealed class ThreatDto
@@ -112,6 +139,14 @@ public sealed class CreatureDto
     public float TraitSpeed { get; set; }
     public int ParentA { get; set; }
     public int ParentB { get; set; }
+
+    // 사냥 상태(스키마 2부터). 없으면 기본값.
+    public long ChaseStartTick { get; set; } = -1;
+    public long NextAttackTick { get; set; }
+    public long HuntCooldownUntilTick { get; set; }
+    public int Kills { get; set; }
+    public int KilledBy { get; set; } = -1;
+    public int IgnoredCarcassId { get; set; } = -1;
     public string RngState { get; set; } = "";
     public string RngInc { get; set; } = "";
     public float StarveDamage { get; set; }
@@ -154,6 +189,7 @@ public sealed class SampleDto
     public float Day { get; set; }
     public int[] Counts { get; set; } = System.Array.Empty<int>();
     public float VegetationKg { get; set; }
+    public float CarcassMeatKg { get; set; }
     public float MeanEnergy { get; set; }
     public float MeanHydration { get; set; }
     public int TotalDeaths { get; set; }

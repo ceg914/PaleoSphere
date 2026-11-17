@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using PaleoSphere.Core;
 using PaleoSphere.Creatures;
+using PaleoSphere.Ecology;
 using PaleoSphere.Simulation;
 
 namespace PaleoSphere.AI;
@@ -92,6 +94,63 @@ public static class Perception
         target = c.Position;
         return false;
     }
+
+    /// <summary>
+    /// 사냥감 고르기: 지각 범위 안의 다른 종 초식동물 가운데 '가깝고 약한' 개체.
+    /// 점수가 같으면 id가 작은 쪽(목록 순서)을 고른다. 난수를 쓰지 않는다.
+    /// </summary>
+    public static Creature? FindPrey(Creature c, SpeciesDefinition sp, WorldState w)
+    {
+        Creature? best = null;
+        float bestScore = 0f;
+        float range = sp.PerceptionRadiusM;
+        float rangeSq = range * range;
+        IReadOnlyList<Creature> all = w.CreatureList;
+        for (int i = 0; i < all.Count; i++)
+        {
+            Creature o = all[i];
+            if (!o.Alive || o.Id == c.Id || o.SpeciesIndex == c.SpeciesIndex) continue;
+            if (w.Species[o.SpeciesIndex].Diet == Diet.Carnivore) continue;
+            float dSq = Vec2.DistanceSquared(c.Position, o.Position);
+            if (dSq > rangeSq) continue;
+            float d = System.MathF.Sqrt(dSq);
+            float weakness = 1.3f - 0.6f * o.Health + 0.3f * o.Fatigue;
+            float score = weakness / (1f + d / 20f);
+            // 깊은 물 건너편처럼 곧장 갈 수 없는 사냥감은 고르지 않는다.
+            if (score > bestScore && w.Terrain.IsLineWalkable(c.Position, o.Position))
+            {
+                bestScore = score;
+                best = o;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>냄새로 찾는 사체: 고기가 남은 것 가운데 '가깝고 많은' 것.</summary>
+    public static Carcass? FindCarcass(Creature c, SpeciesDefinition sp, WorldState w)
+    {
+        Carcass? best = null;
+        float bestScore = 0f;
+        float rangeSq = sp.SmellRadiusM * sp.SmellRadiusM;
+        for (int i = 0; i < w.Carcasses.Count; i++)
+        {
+            Carcass k = w.Carcasses[i];
+            if (k.MeatKg < MinMeatKg || k.Id == c.IgnoredCarcassId) continue;
+            float dSq = Vec2.DistanceSquared(c.Position, k.Position);
+            if (dSq > rangeSq) continue;
+            // 고기 양의 네제곱근(제곱근은 IEEE가 결과를 정해 두어 기기마다 같다. Pow는 그렇지 않다).
+            float score = System.MathF.Sqrt(System.MathF.Sqrt(k.MeatKg)) / (1f + System.MathF.Sqrt(dSq) / 30f);
+            if (score > bestScore && (dSq < 100f || w.Terrain.IsLineWalkable(c.Position, k.Position)))
+            {
+                bestScore = score;
+                best = k;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>먹을 고기가 남았다고 보는 최소량(kg).</summary>
+    public const float MinMeatKg = 0.5f;
 
     /// <summary>
     /// 먹이가 빈약한 곳을 떠날 때의 먼 목적지. 지금 향하던 쪽을 우선해 같은 자리를 맴돌지 않게 한다.

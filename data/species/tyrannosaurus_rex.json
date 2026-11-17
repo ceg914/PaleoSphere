@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "id": "tyrannosaurus_rex",
+  "scientific_name": "Tyrannosaurus rex",
+  "name": {
+    "ko": "티라노사우루스",
+    "en": "Tyrannosaurus"
+  },
+  "diet": "carnivore",
+  "period": {
+    "text": "후기 백악기 마스트리흐트절 후반 (약 6800만~6600만 년 전)",
+    "evidence": "confirmed"
+  },
+  "range": {
+    "text": "북아메리카 서부 (헬크리크층, 랜스층 등)",
+    "evidence": "confirmed"
+  },
+  "body": {
+    "evidence": "inferred",
+    "length_m": 12.3,
+    "mass_kg": 8400,
+    "note": "가장 큰 축에 드는 표본(Sue, FMNH PR 2081)의 몸길이 약 12.3 m, 체중 약 8.4 t라는 값을 대표값으로 썼다. 체중 추정은 방법에 따라 대략 5~9 t 이상으로 갈리며, 이 수치는 2차 자료에서 가져왔다."
+  },
+  "locomotion": {
+    "evidence": "simplified",
+    "walk_speed_mps": 1.4,
+    "run_speed_mps": 6.5,
+    "turn_rate_deg_per_sec": 70,
+    "perception_radius_m": 60
+  },
+  "physiology": {
+    "evidence": "simplified",
+    "daily_food_kg": 110,
+    "energy_reserve_days": 14,
+    "intake_kg_per_hour": 150,
+    "hydration_reserve_days": 3,
+    "drink_hours_to_full": 0.3,
+    "awake_hours": 15,
+    "rest_hours": 8,
+    "starve_health_days": 6,
+    "dehydration_health_days": 1.5,
+    "health_regen_per_day": 0.2
+  },
+  "life_history": {
+    "evidence": "simplified",
+    "adult_age_days": 25,
+    "max_age_days": 400
+  },
+  "predation": {
+    "evidence": "simplified",
+    "attack_success": 0.3,
+    "defense": 0.1,
+    "max_chase_seconds": 40,
+    "smell_radius_m": 150
+  },
+  "placement": {
+    "biomes": [
+      "open_plain",
+      "forest",
+      "wetland",
+      "upland"
+    ]
+  },
+  "proxy": {
+    "evidence": "simplified",
+    "shape": "quadruped",
+    "color": [
+      0.38,
+      0.34,
+      0.24
+    ]
+  },
+  "model": {
+    "evidence": "simplified",
+    "path": "res://assets/models/dinosaurs/Trex.fbx",
+    "source": "Quaternius, Animated Dinosaur Pack (2018), quaternius.com",
+    "license": "CC0 1.0",
+    "length_units": 29.1,
+    "walk_units_per_second": 12.21,
+    "run_units_per_second": 26.99,
+    "animations": {
+      "idle": "TRex_Idle",
+      "walk": "TRex_Walk",
+      "run": "TRex_Run",
+      "death": "TRex_Death",
+      "attack": "TRex_Attack"
+    }
+  },
+  "facts": [
+    {
+      "topic": "분류",
+      "text": "수각류 티라노사우루스과에 속하는 대형 육식 공룡. 뒷다리로 걷고 앞다리는 짧다.",
+      "evidence": "confirmed"
+    },
+    {
+      "topic": "식성",
+      "text": "굵고 톱니가 있는 이빨과 튼튼한 두개골이 화석으로 확인된다. 이빨 자국이 남은 다른 공룡의 뼈와 뼛조각이 든 분석(배설물 화석)으로 보아 육식이었다고 본다.",
+      "evidence": "inferred"
+    },
+    {
+      "topic": "사냥과 청소",
+      "text": "살아 있는 동물을 사냥했는지, 주로 사체를 먹었는지는 오래 논쟁되었다. 아문 상처가 있는 먹잇감 화석은 사냥 시도가 있었다는 근거로 쓰인다. 게임에서는 사냥과 사체 먹기를 모두 한다.",
+      "evidence": "inferred"
+    },
+    {
+      "topic": "달리기 속도",
+      "text": "생체역학 모델에 따라 초속 5~15 m로 추정이 크게 갈리고, 2017년 연구는 빠르게 걷는 정도가 한계였다고 본다. 게임의 달리기 속도 6.5 m/s는 사냥이 성립하도록 정한 값이다.",
+      "evidence": "simplified"
+    },
+    {
+      "topic": "피부",
+      "text": "다리·꼬리 등 일부에서 비늘 피부 흔적이 보고되었다. 몸 전체를 덮는 깃털이 있었는지는 논쟁 중이다. 화면의 색과 모델은 임시 표현이다.",
+      "evidence": "inferred"
+    },
+    {
+      "topic": "사냥 수치",
+      "text": "공격 성공 확률, 추격 시간, 냄새 거리, 먹이 요구량은 시뮬레이션을 돌리려고 정한 값이며 실제 생물의 측정치가 아니다.",
+      "evidence": "simplified"
+    },
+    {
+      "topic": "활동 시간",
+      "text": "낮에 활동하고 밤에 쉰다고 가정했다. 실제 활동 주기는 알려져 있지 않다.",
+      "evidence": "simplified"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Osborn, H. F. (1905). Bulletin of the American Museum of Natural History 21.",
+      "note": "Tyrannosaurus rex를 명명한 원기재."
+    },
+    {
+      "title": "Hutchinson, J. R. & Garcia, M. (2002). Tyrannosaurus was not a fast runner. Nature 415.",
+      "note": "근육량으로 본 달리기 능력의 한계."
+    },
+    {
+      "title": "Sellers, W. I. et al. (2017). Investigating the running abilities of Tyrannosaurus rex using stress-constrained multibody dynamic analysis. PeerJ 5:e3420.",
+      "note": "빠르게 걷는 정도가 한계였다는 모델 결과."
+    },
+    {
+      "title": "Erickson, G. M. & Olson, K. H. (1996). Bite marks attributable to Tyrannosaurus rex. Journal of Vertebrate Paleontology 16(1).",
+      "note": "트리케라톱스 골반 등의 이빨 자국."
+    },
+    {
+      "title": "체격 수치에 대한 주의",
+      "note": "몸길이·체중은 2차 자료(박물관 표본 정보를 정리한 표)에서 가져왔다. 1차 문헌과 직접 대조하지 않았다."
+    },
+    {
+      "title": "3D 모델: Quaternius, Animated Dinosaur Pack (2018)",
+      "note": "CC0 1.0. 표시용 양식화 모델로, 형태 고증 자료가 아니다."
+    }
+  ]
+}

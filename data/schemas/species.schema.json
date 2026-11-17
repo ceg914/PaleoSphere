@@ -447,6 +447,45 @@
           "additionalProperties": false
         }
       }
+    },
+    "predation": {
+      "type": "object",
+      "description": "포식 관계(선택). 수치는 게임적 단순화.",
+      "required": [
+        "evidence"
+      ],
+      "properties": {
+        "evidence": {
+          "enum": [
+            "confirmed",
+            "inferred",
+            "simplified"
+          ],
+          "description": "confirmed = 화석으로 확인, inferred = 학술적 추정, simplified = 게임적 단순화"
+        },
+        "attack_success": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "공격 한 번의 기본 성공 확률. 0이면 사냥하지 않는다. 초식동물은 0이어야 한다"
+        },
+        "defense": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "공격받을 때 버티고 반격하는 정도"
+        },
+        "max_chase_seconds": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 600
+        },
+        "smell_radius_m": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000
+        }
+      }
     }
   }
 }

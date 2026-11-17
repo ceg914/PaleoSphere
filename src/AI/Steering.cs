@@ -84,6 +84,16 @@ public sealed class Steering
             c.PrevHeading = c.Heading;
 
             Vec2 v = _velocity[i];
+            if (c.Activity == ActivityKind.Attack && c.HasTarget)
+            {
+                // 공격 중에는 제자리에서 사냥감 쪽으로 몸을 돌린다.
+                Vec2 to = c.Target - c.Position;
+                if (to.LengthSquared > 0.01f)
+                {
+                    float maxTurn = sp.TurnRateDegPerSec * (MathUtil.Pi / 180f) * dt;
+                    c.Heading = MathUtil.MoveTowardAngle(c.Heading, to.Heading, maxTurn);
+                }
+            }
             if (v.LengthSquared < 1e-6f)
             {
                 c.CurrentSpeed = 0f;

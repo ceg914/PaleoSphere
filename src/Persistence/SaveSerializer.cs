@@ -151,12 +151,19 @@ public static class SaveSerializer
             Vegetation = new VegetationDto
             {
                 Biomass = Pack(w.Vegetation.Biomass),
+                Nutrient = Pack(w.Vegetation.Nutrient),
+                TotalNutrientAdded = w.Vegetation.TotalNutrientAdded,
+                TotalNutrientUsed = w.Vegetation.TotalNutrientUsed,
+                TotalNutrientLeached = w.Vegetation.TotalNutrientLeached,
                 InitialTotal = w.Vegetation.InitialTotal,
                 TotalGrown = w.Vegetation.TotalGrown,
                 TotalConsumed = w.Vegetation.TotalConsumed,
                 TotalDieback = w.Vegetation.TotalDieback,
             },
             EventsTotal = sim.Events.TotalPublished,
+            CarcassMassCreated = w.CarcassMassCreated,
+            CarcassMassEaten = w.CarcassMassEaten,
+            CarcassMassDecomposed = w.CarcassMassDecomposed,
         };
         foreach (BiomeDefinition b in w.Biomes.All) dto.Terrain.BiomeIds.Add(b.Id);
         foreach (SpeciesDefinition s in w.Species.All) dto.SpeciesIds.Add(s.Id);
@@ -180,6 +187,8 @@ public static class SaveSerializer
                 ThreatX = cr.ThreatPosition.X, ThreatZ = cr.ThreatPosition.Z, ThreatUntilTick = cr.ThreatUntilTick,
                 TraitBodySize = cr.TraitBodySize, TraitMetabolism = cr.TraitMetabolism, TraitSpeed = cr.TraitSpeed,
                 ParentA = cr.ParentA, ParentB = cr.ParentB,
+                ChaseStartTick = cr.ChaseStartTick, NextAttackTick = cr.NextAttackTick, HuntCooldownUntilTick = cr.HuntCooldownUntilTick,
+                Kills = cr.Kills, KilledBy = cr.KilledBy, IgnoredCarcassId = cr.IgnoredCarcassId,
                 RngState = Hex(cr.Rng.State), RngInc = Hex(cr.Rng.Inc),
                 StarveDamage = cr.StarveDamage, DehydrationDamage = cr.DehydrationDamage,
                 StuckTicks = cr.StuckTicks, AvoidSide = cr.AvoidSide, BoutAmount = cr.BoutAmount,
@@ -208,8 +217,18 @@ public static class SaveSerializer
         {
             dto.Stats.Samples.Add(new SampleDto
             {
-                Tick = s.Tick, Day = s.Day, Counts = s.Counts, VegetationKg = s.VegetationKg,
+                Tick = s.Tick, Day = s.Day, Counts = s.Counts, VegetationKg = s.VegetationKg, CarcassMeatKg = s.CarcassMeatKg,
                 MeanEnergy = s.MeanEnergy, MeanHydration = s.MeanHydration, TotalDeaths = s.TotalDeaths,
+            });
+        }
+
+        foreach (Carcass k in w.Carcasses)
+        {
+            dto.Carcasses.Add(new CarcassDto
+            {
+                Id = k.Id, Species = k.SpeciesIndex, X = k.Position.X, Z = k.Position.Z, Heading = k.Heading,
+                Cause = (int)k.Cause, DiedTick = k.DiedTick, MeatKg = k.MeatKg, InitialMeatKg = k.InitialMeatKg,
+                RemainsKg = k.RemainsKg, InitialMassKg = k.InitialMassKg,
             });
         }
 
@@ -557,7 +576,13 @@ public static class SaveSerializer
         vegetation.TotalGrown = dto.Vegetation.TotalGrown;
         vegetation.TotalConsumed = dto.Vegetation.TotalConsumed;
         vegetation.TotalDieback = dto.Vegetation.TotalDieback;
-        if (double.IsNaN(vegetation.InitialTotal + vegetation.TotalGrown + vegetation.TotalConsumed + vegetation.TotalDieback))
+        // 토양 영양은 스키마 2부터 있다. 비어 있으면 0이다.
+        if (dto.Vegetation.Nutrient.Length > 0 && !Unpack(dto.Vegetation.Nutrient, vegetation.Nutrient, "vegetation.nutrient", errors, 0f, 1e9f)) return null;
+        vegetation.TotalNutrientAdded = dto.Vegetation.TotalNutrientAdded;
+        vegetation.TotalNutrientUsed = dto.Vegetation.TotalNutrientUsed;
+        vegetation.TotalNutrientLeached = dto.Vegetation.TotalNutrientLeached;
+        if (double.IsNaN(vegetation.InitialTotal + vegetation.TotalGrown + vegetation.TotalConsumed + vegetation.TotalDieback
+            + vegetation.TotalNutrientAdded + vegetation.TotalNutrientUsed + vegetation.TotalNutrientLeached))
         {
             errors.Add("vegetation 누계 값이 잘못되었습니다.");
             return null;
@@ -632,7 +657,7 @@ public static class SaveSerializer
                 errors.Add($"{where}: 형질 값이 허용 범위를 벗어났습니다.");
                 return null;
             }
-            if (c.Behavior < 0 || c.Behavior >= BehaviorKinds.Count || c.Activity < 0 || c.Activity > (int)ActivityKind.Rest
+            if (c.Behavior < 0 || c.Behavior >= BehaviorKinds.Count || c.Activity < 0 || c.Activity > (int)ActivityKind.Attack
                 || c.Sex < 0 || c.Sex > (int)Sex.Male || c.LifeStage < 0 || c.LifeStage > (int)LifeStage.Adult
                 || c.Reason < 0 || c.Reason > (int)DecisionReason.SafetyThreat || (c.AvoidSide != 1 && c.AvoidSide != -1))
             {
@@ -676,6 +701,12 @@ public static class SaveSerializer
                 TraitSpeed = c.TraitSpeed,
                 ParentA = c.ParentA,
                 ParentB = c.ParentB,
+                ChaseStartTick = c.ChaseStartTick,
+                NextAttackTick = c.NextAttackTick,
+                HuntCooldownUntilTick = c.HuntCooldownUntilTick,
+                Kills = Math.Max(0, c.Kills),
+                KilledBy = c.KilledBy,
+                IgnoredCarcassId = c.IgnoredCarcassId,
                 Rng = new Pcg32 { State = cs, Inc = ci },
                 StarveDamage = c.StarveDamage,
                 DehydrationDamage = c.DehydrationDamage,
@@ -694,7 +725,7 @@ public static class SaveSerializer
             {
                 LogDto l = c.Log[k];
                 if (l.Behavior < 0 || l.Behavior >= BehaviorKinds.Count || l.Reason < 0 || l.Reason > (int)DecisionReason.SafetyThreat
-                    || l.Result < 0 || l.Result > (int)BehaviorResult.NoWaterReachable) continue;
+                    || l.Result < 0 || l.Result > (int)BehaviorResult.Kill) continue;
                 cr.Log.Add(new BehaviorLogEntry
                 {
                     Tick = l.Tick, Behavior = (BehaviorKind)l.Behavior, Reason = (DecisionReason)l.Reason, Score = l.Score,
@@ -706,11 +737,51 @@ public static class SaveSerializer
         }
         sim.SortCreaturesById();
 
+        // 사체
+        var carcassIds = new HashSet<int>();
+        for (int i = 0; i < dto.Carcasses.Count; i++)
+        {
+            CarcassDto k = dto.Carcasses[i];
+            string where = $"carcasses[{i}]";
+            if (!carcassIds.Add(k.Id) || k.Id < 1 || k.Id >= dto.NextCreatureId)
+            {
+                errors.Add($"{where}: id {k.Id}이(가) 잘못되었거나 중복됩니다.");
+                return null;
+            }
+            if (k.Species < 0 || k.Species >= speciesMap.Length || speciesMap[k.Species] < 0)
+            {
+                errors.Add($"{where}: 종 정의가 없습니다.");
+                return null;
+            }
+            if (!Finite(k.X) || !Finite(k.Z) || k.X < 0 || k.Z < 0 || k.X > size || k.Z > size || !Finite(k.Heading)
+                || !InRange(k.InitialMassKg, 0f, 1e7f) || !InRange(k.RemainsKg, 0f, k.InitialMassKg * 1.0001f + 0.01f)
+                || !InRange(k.MeatKg, 0f, k.RemainsKg + 0.01f) || !InRange(k.InitialMeatKg, 0f, k.InitialMassKg + 0.01f)
+                || k.Cause < (int)DeathCause.Starvation || k.Cause > (int)DeathCause.OldAge)
+            {
+                errors.Add($"{where}: 값이 허용 범위를 벗어났습니다.");
+                return null;
+            }
+            sim.RestoreCarcass(new Carcass
+            {
+                Id = k.Id, SpeciesIndex = speciesMap[k.Species], Position = new Vec2(k.X, k.Z), Heading = k.Heading,
+                Cause = (DeathCause)k.Cause, DiedTick = k.DiedTick, MeatKg = k.MeatKg, InitialMeatKg = k.InitialMeatKg,
+                RemainsKg = k.RemainsKg, InitialMassKg = k.InitialMassKg,
+            });
+        }
+        if (!Finite((float)dto.CarcassMassCreated) || !Finite((float)dto.CarcassMassEaten) || !Finite((float)dto.CarcassMassDecomposed))
+        {
+            errors.Add("사체 질량 장부 값이 잘못되었습니다.");
+            return null;
+        }
+        world.CarcassMassCreated = dto.CarcassMassCreated;
+        world.CarcassMassEaten = dto.CarcassMassEaten;
+        world.CarcassMassDecomposed = dto.CarcassMassDecomposed;
+
         // 사건 로그
         var events = new List<SimEvent>();
         foreach (EventDto e in dto.Events)
         {
-            if (e.Type < 0 || e.Type > (int)SimEventType.Notice) continue;
+            if (e.Type < 0 || e.Type > (int)SimEventType.Predation) continue;
             if (e.SpeciesId.Length > 64 || e.Detail.Length > 200 || !Finite(e.X) || !Finite(e.Z)) continue;
             events.Add(new SimEvent(e.Tick, e.Day, e.Hour, (SimEventType)e.Type, e.CreatureId, e.SpeciesId, e.Detail, new Vec2(e.X, e.Z)));
         }
@@ -754,6 +825,7 @@ public static class SaveSerializer
             stats.Samples.Add(new StatSample
             {
                 Tick = s.Tick, Day = s.Day, Counts = counts, VegetationKg = s.VegetationKg,
+                CarcassMeatKg = Finite(s.CarcassMeatKg) ? Math.Max(0f, s.CarcassMeatKg) : 0f,
                 MeanEnergy = s.MeanEnergy, MeanHydration = s.MeanHydration, TotalDeaths = s.TotalDeaths,
             });
         }

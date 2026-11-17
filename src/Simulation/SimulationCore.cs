@@ -39,6 +39,16 @@ public sealed class SimulationCore
     private readonly Queue<ISimCommand> _pending = new();
     private readonly List<CommandResult> _results = new();
     private readonly Steering _steering = new();
+    private readonly List<Creature> _predators = new();
+
+    // 포식자를 보고 느끼는 공포(게임적 단순화).
+    private const float FearOfHunterTargetingMe = 1.0f;
+    private const float FearOfNearbyHunter = 0.55f;
+    private const float FearOfIdlePredator = 0.35f;
+    private const float IdlePredatorAlertDistanceM = 18f;
+
+    /// <summary>걸어서 다가오는 사냥꾼은 지각 거리의 이 비율 안에서야 알아챈다.</summary>
+    private const float StalkNoticeFraction = 0.6f;
 
     public int NextCreatureId { get; internal set; } = 1;
 
@@ -52,6 +62,8 @@ public sealed class SimulationCore
     public SimulationCore(WorldState world, PopulationStats? stats = null)
     {
         World = world;
+        World.CreatureList = _creatures;
+        World.CreaturesById = _byId;
         Stats = stats ?? new PopulationStats(world.Species.Count, Math.Max(1, world.Config.TicksPerDay / 48));
         WorldRng = Pcg32.Create(world.Config.Seed, 0x574F524CUL);
     }
@@ -231,7 +243,7 @@ public sealed class SimulationCore
         long tick = clock.Tick;
         // 첫 표본은 초기 배치가 끝난 뒤의 상태로 남긴다.
         if (Stats.Samples.Count == 0)
-            Stats.Sample(tick, (float)clock.ElapsedDays, _creatures, w.Vegetation.LastTotal);
+            Stats.Sample(tick, (float)clock.ElapsedDays, _creatures, w.Vegetation.LastTotal, CarcassMeatKg());
         w.Env = EnvironmentState.Compute(clock, w.Config);
 
         for (int i = w.Threats.Count - 1; i >= 0; i--)
@@ -241,8 +253,13 @@ public sealed class SimulationCore
         {
             Profiler.BeginSection();
             w.Vegetation.Update(w.Terrain, w.Biomes, w.Forage, w.Config, w.Env, VegetationIntervalTicks * clock.DaysPerTick);
+            UpdateCarcasses(VegetationIntervalTicks * clock.DaysPerTick);
             Profiler.EndSection(TickProfiler.Section.Vegetation);
         }
+
+        _predators.Clear();
+        for (int i = 0; i < _creatures.Count; i++)
+            if (w.Species[_creatures[i].SpeciesIndex].IsPredator) _predators.Add(_creatures[i]);
 
         Profiler.BeginSection();
         float hoursDt = PhysiologyIntervalTicks * clock.HoursPerTick;
@@ -250,15 +267,30 @@ public sealed class SimulationCore
         for (int i = 0; i < _creatures.Count; i++)
         {
             Creature c = _creatures[i];
+            // 이번 틱에 앞선 개체에게 사냥당했으면 건너뛴다.
+            if (!c.Alive)
+            {
+                anyDead = true;
+                continue;
+            }
             long phase = tick + c.Id;
             SpeciesDefinition sp = w.Species[c.SpeciesIndex];
 
             if (phase % DecisionIntervalTicks == 0)
             {
                 SenseThreats(c, w, tick);
-                float bite = sp.IntakeKgPerHour * hoursDt * c.TraitBodySize;
-                bool foodNearby = Perception.IsFoodNearby(c, w, Perception.GoodCellKg(w, bite) * 0.5f);
-                BehaviorKind chosen = UtilityBrain.Decide(c, w, foodNearby);
+                bool foodNearby, preyVisible = false;
+                if (sp.Diet == Diet.Carnivore)
+                {
+                    foodNearby = Perception.FindCarcass(c, sp, w) != null;
+                    if (sp.IsPredator) preyVisible = Perception.FindPrey(c, sp, w) != null;
+                }
+                else
+                {
+                    float bite = sp.IntakeKgPerHour * hoursDt * c.TraitBodySize;
+                    foodNearby = Perception.IsFoodNearby(c, w, Perception.GoodCellKg(w, bite) * 0.5f);
+                }
+                BehaviorKind chosen = UtilityBrain.Decide(c, w, foodNearby, preyVisible);
                 BehaviorExecutor.SwitchBehavior(c, chosen, tick);
             }
 
@@ -276,11 +308,13 @@ public sealed class SimulationCore
         }
         Profiler.EndSection(TickProfiler.Section.Brain);
 
+        // 죽은 개체는 이동 전에 빼고 사체로 바꾼다.
+        if (anyDead || w.DeathsPending) RemoveDead();
+        w.DeathsPending = false;
+
         Profiler.BeginSection();
         _steering.Step(_creatures, w);
         Profiler.EndSection(TickProfiler.Section.Movement);
-
-        if (anyDead) RemoveDead();
 
         int dayBefore = clock.Day;
         Season seasonBefore = clock.Season;
@@ -293,13 +327,43 @@ public sealed class SimulationCore
         }
 
         if (clock.Tick % Stats.SampleIntervalTicks == 0)
-            Stats.Sample(clock.Tick, (float)clock.ElapsedDays, _creatures, w.Vegetation.LastTotal);
+            Stats.Sample(clock.Tick, (float)clock.ElapsedDays, _creatures, w.Vegetation.LastTotal, CarcassMeatKg());
 
         Profiler.EndTick();
     }
 
-    private static void SenseThreats(Creature c, WorldState w, long tick)
+    private void SenseThreats(Creature c, WorldState w, long tick)
     {
+        // 포식자: 나를 쫓는 사냥꾼 > 사냥 중인 포식자 > 가까이 있는 포식자.
+        SpeciesDefinition mine = w.Species[c.SpeciesIndex];
+        if (mine.Diet != Diet.Carnivore)
+        {
+            for (int i = 0; i < _predators.Count; i++)
+            {
+                Creature p = _predators[i];
+                if (!p.Alive) continue;
+                float d = Vec2.Distance(c.Position, p.Position);
+                float fear = 0f;
+                // 걸어서 몰래 다가오는 포식자는 더 가까이 와야 알아챈다(잠행).
+                bool charging = p.Activity == ActivityKind.Run || p.Activity == ActivityKind.Attack;
+                float noticeRange = mine.PerceptionRadiusM * (charging ? 1f : StalkNoticeFraction);
+                bool hunting = p.Behavior == BehaviorKind.Hunt;
+                if (hunting && p.TargetEntityId == c.Id && d < noticeRange * (charging ? 1.75f : 1f))
+                    fear = FearOfHunterTargetingMe;
+                else if (hunting && d < noticeRange)
+                    fear = FearOfNearbyHunter + (1f - FearOfNearbyHunter) * (1f - d / noticeRange) * 0.8f;
+                else if (d < IdlePredatorAlertDistanceM)
+                    fear = FearOfIdlePredator;
+                if (fear <= 0f) continue;
+                if (fear >= c.Fear || c.ThreatUntilTick < tick)
+                {
+                    c.Fear = Math.Max(c.Fear, fear);
+                    c.ThreatPosition = p.Position;
+                }
+                c.ThreatUntilTick = tick + ThreatMemoryTicks;
+            }
+        }
+
         for (int i = 0; i < w.Threats.Count; i++)
         {
             ThreatSource t = w.Threats[i];
@@ -326,11 +390,92 @@ public sealed class SimulationCore
             }
             _byId.Remove(c.Id);
             Stats.OnDeath(c.SpeciesIndex, c.DeathCause);
+            SpeciesDefinition sp = World.Species[c.SpeciesIndex];
             Publish(c.DeathCause == DeathCause.Removed ? SimEventType.CreatureRemoved : SimEventType.CreatureDied,
-                c.Id, World.Species[c.SpeciesIndex].Id, BehaviorKinds.ToId(c.DeathCause), c.Position);
+                c.Id, sp.Id, BehaviorKinds.ToId(c.DeathCause), c.Position);
+            if (c.DeathCause == DeathCause.Predation && c.KilledBy >= 0 && _byId.TryGetValue(c.KilledBy, out Creature? killer))
+            {
+                Publish(SimEventType.Predation, killer.Id, World.Species[killer.SpeciesIndex].Id,
+                    c.Id.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + sp.Id, c.Position);
+            }
+            if (c.DeathCause != DeathCause.Removed) AddCarcass(c, sp);
         }
         _creatures.RemoveRange(write, _creatures.Count - write);
     }
+
+    // ---------------------------------------------------------------- 사체
+
+    private void AddCarcass(Creature c, SpeciesDefinition sp)
+    {
+        float size = c.TraitBodySize;
+        float mass = sp.BodyMassKg * size * size * size;
+        // 굶어 죽은 몸에는 먹을 살이 적다.
+        float meat = mass * CarcassRules.EdibleFraction * (c.DeathCause == DeathCause.Starvation ? 0.6f : 1f);
+        World.Carcasses.Add(new Carcass
+        {
+            Id = c.Id,
+            SpeciesIndex = c.SpeciesIndex,
+            Position = c.Position,
+            Heading = c.Heading,
+            Cause = c.DeathCause,
+            DiedTick = Clock.Tick,
+            MeatKg = meat,
+            InitialMeatKg = meat,
+            RemainsKg = mass,
+            InitialMassKg = mass,
+        });
+        World.CarcassMassCreated += mass;
+    }
+
+    /// <summary>고기가 상하고, 몸이 분해되어 둘레 3×3 셀의 토양 영양으로 돌아간다.</summary>
+    private void UpdateCarcasses(float daysDt)
+    {
+        WorldState w = World;
+        if (w.Carcasses.Count == 0) return;
+        float spoil = MathF.Min(1f, CarcassRules.SpoilRatePerDay * daysDt);
+        float decompose = MathF.Min(1f, CarcassRules.DecomposeRatePerDay * daysDt);
+        int write = 0;
+        for (int i = 0; i < w.Carcasses.Count; i++)
+        {
+            Carcass k = w.Carcasses[i];
+            k.MeatKg -= k.MeatKg * spoil;
+            float gone = k.RemainsKg * decompose;
+            bool finished = k.RemainsKg - gone < k.InitialMassKg * CarcassRules.RemoveBelowFraction;
+            if (finished) gone = k.RemainsKg;
+            k.RemainsKg -= gone;
+            if (k.MeatKg > k.RemainsKg) k.MeatKg = k.RemainsKg;
+            w.CarcassMassDecomposed += gone;
+            SpreadNutrient(k.Position, gone * CarcassRules.NutrientFraction);
+            if (!finished) w.Carcasses[write++] = k;
+        }
+        w.Carcasses.RemoveRange(write, w.Carcasses.Count - write);
+    }
+
+    private void SpreadNutrient(Vec2 position, float kg)
+    {
+        if (!(kg > 0f)) return;
+        TerrainGrid t = World.Terrain;
+        int cell = t.CellIndexAt(position);
+        int n = t.Size, cx = cell % n, cz = cell / n;
+        int count = 0;
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++)
+                if (t.InBounds(cx + dx, cz + dz)) count++;
+        float share = kg / count;
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++)
+                if (t.InBounds(cx + dx, cz + dz)) World.Vegetation.AddNutrient((cz + dz) * n + cx + dx, share);
+    }
+
+    public double CarcassMeatKg()
+    {
+        double total = 0;
+        foreach (Carcass k in World.Carcasses) total += k.MeatKg;
+        return total;
+    }
+
+    /// <summary>불러오기 전용: 저장된 사체를 그대로 넣는다.</summary>
+    internal void RestoreCarcass(Carcass k) => World.Carcasses.Add(k);
 
     private void Publish(SimEventType type, int creatureId, string speciesId, string detail, Vec2 position)
     {
@@ -359,6 +504,9 @@ public sealed class SimulationCore
         }
         h.Add(_creatures.Count);
         for (int i = 0; i < _creatures.Count; i++) _creatures[i].AddToHash(ref h);
+        h.Add(World.Carcasses.Count);
+        foreach (Carcass k in World.Carcasses) k.AddToHash(ref h);
+        h.Add(World.CarcassMassCreated); h.Add(World.CarcassMassEaten); h.Add(World.CarcassMassDecomposed);
         return h.Value;
     }
 
@@ -389,6 +537,25 @@ public sealed class SimulationCore
         }
         snapshot.Count = count;
         snapshot.Tick = Clock.Tick;
+
+        List<Carcass> carcasses = World.Carcasses;
+        if (snapshot.Carcasses.Length < carcasses.Count)
+            snapshot.Carcasses = new CarcassSnapshot[Math.Max(carcasses.Count, snapshot.Carcasses.Length * 2)];
+        for (int i = 0; i < carcasses.Count; i++)
+        {
+            Carcass k = carcasses[i];
+            snapshot.Carcasses[i] = new CarcassSnapshot
+            {
+                Id = k.Id,
+                SpeciesIndex = k.SpeciesIndex,
+                Position = k.Position,
+                Heading = k.Heading,
+                DiedTick = k.DiedTick,
+                Remaining = k.RemainingFraction,
+                MeatKg = k.MeatKg,
+            };
+        }
+        snapshot.CarcassCount = carcasses.Count;
     }
 
     public CreatureDetails? GetDetails(int id)
@@ -418,6 +585,8 @@ public sealed class SimulationCore
             ParentB = c.ParentB,
             Reason = c.LastReason,
             LastDecisionTick = c.LastDecisionTick,
+            TargetEntityId = c.TargetEntityId,
+            Kills = c.Kills,
         };
         Array.Copy(c.LastScores, d.Scores, d.Scores.Length);
         d.Log.AddRange(c.Log);

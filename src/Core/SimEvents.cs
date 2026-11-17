@@ -13,6 +13,9 @@ public enum SimEventType
     SeasonChanged = 5,
     CommandRejected = 6,
     Notice = 7,
+
+    /// <summary>사냥 성공. CreatureId·SpeciesId는 사냥한 쪽, Detail은 "사냥감id|사냥감종id".</summary>
+    Predation = 8,
 }
 
 /// <summary>시뮬레이션에서 일어난 사건 한 건. Detail은 UI 표시용 보조 정보(사망 원인 id 등).</summary>

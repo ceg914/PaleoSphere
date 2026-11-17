@@ -153,6 +153,30 @@ public class DataValidationTests : IDisposable
     }
 
     [Fact]
+    public void Herbivore_CannotHaveAttackSuccess()
+    {
+        string good = RepoFile("species/triceratops_horridus.json");
+        string bad = good.Replace("\"defense\": 0.35", "\"defense\": 0.35, \"attack_success\": 0.5");
+        var report = new ValidationReport();
+        Assert.Null(DefinitionLoaders.ParseSpecies(bad, "herb.json", report));
+        Assert.Contains(report.Errors, e => e.Contains("attack_success"));
+    }
+
+    [Fact]
+    public void Predator_IsParsed()
+    {
+        Assert.True(TestData.Data.Species.TryGetIndex(TestData.Predator, out int index));
+        SpeciesDefinition rex = TestData.Data.Species[index];
+        Assert.Equal(Diet.Carnivore, rex.Diet);
+        Assert.True(rex.IsPredator);
+        Assert.InRange(rex.AttackSuccess, 0.01f, 1f);
+        Assert.True(rex.SmellRadiusM > rex.PerceptionRadiusM);
+        SpeciesDefinition tri = TestData.Data.Species[0];
+        Assert.False(tri.IsPredator);
+        Assert.True(tri.Defense > 0f);
+    }
+
+    [Fact]
     public void DeeplyNestedJson_IsRejected()
     {
         string deep = string.Concat(Enumerable.Repeat("{\"a\":", 200)) + "1" + new string('}', 200);
@@ -231,7 +255,8 @@ public class DataValidationTests : IDisposable
 
         GameData data = GameData.LoadFromDirectory(_dir);
         Assert.True(data.IsUsable);
-        Assert.Equal(1, data.Species.Count);
+        // 저장소의 종 정의는 그대로 읽히고, 깨진 파일과 중복 파일만 빠진다.
+        Assert.Equal(TestData.Data.Species.Count, data.Species.Count);
         Assert.Equal(TestData.Data.Biomes.Count, data.Biomes.Count);
         Assert.DoesNotContain(data.Scenarios, s => s.Id == "ghost");
         Assert.True(data.Report.Errors.Count >= 4);

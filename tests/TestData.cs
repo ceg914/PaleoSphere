@@ -32,6 +32,7 @@ internal static class TestData
     public static GameData Data => Shared.Value;
 
     public const string Herbivore = "triceratops_horridus";
+    public const string Predator = "tyrannosaurus_rex";
 
     /// <summary>128 m 정사각 세계. 테스트가 빨리 끝나도록 작게 잡는다.</summary>
     public static WorldConfig SmallConfig(ulong seed = 7UL) => new()

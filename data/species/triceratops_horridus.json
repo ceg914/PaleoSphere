@@ -46,6 +46,10 @@
     "adult_age_days": 20,
     "max_age_days": 400
   },
+  "predation": {
+    "evidence": "simplified",
+    "defense": 0.35
+  },
   "placement": {
     "biomes": [
       "open_plain",
@@ -101,6 +105,11 @@
       "evidence": "inferred"
     },
     {
+      "topic": "포식자와의 관계",
+      "text": "티라노사우루스의 이빨 자국이 난 트리케라톱스 화석(골반, 이빨 자국이 아문 뿔 등)이 보고되어 있다. 사냥이었는지 사체를 먹은 것인지는 경우마다 해석이 갈린다. 게임의 방어력(반격) 수치는 단순화다.",
+      "evidence": "inferred"
+    },
+    {
       "topic": "피부와 색",
       "text": "피부색은 알 수 없다. 화면의 모델은 양식화된 로우폴리 표현이며, 색과 비율은 고증이 아니다.",
       "evidence": "simplified"
@@ -124,6 +133,10 @@
     {
       "title": "Scannella, J. B. & Horner, J. R. (2010). Journal of Vertebrate Paleontology 30(4).",
       "note": "성장에 따른 두개골 형태 변화를 다룬 연구. 결론(Torosaurus와의 동일성)은 논쟁 중이다."
+    },
+    {
+      "title": "Happ, J. (2008). An analysis of predator–prey behavior in a head-to-head encounter between Tyrannosaurus rex and Triceratops. In Larson & Carpenter (eds.), Tyrannosaurus rex, the Tyrant King.",
+      "note": "이빨 자국이 아문 트리케라톱스 뿔 화석을 다룬 연구."
     },
     {
       "title": "체격 수치에 대한 주의",

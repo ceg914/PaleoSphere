@@ -12,9 +12,28 @@ public sealed class VegetationGrid
     /// <summary>성장 조건(0~1)이 이 값 아래면 고사가 시작된다.</summary>
     public const float StressThreshold = 0.35f;
 
+    /// <summary>토양 영양이 이만큼(kg)이면 성장 속도 가산이 최대의 절반이 된다.</summary>
+    public const float NutrientHalfSaturationKg = 5f;
+
+    /// <summary>토양 영양에 따른 성장 속도 가산의 최대치(1이면 최대 2배).</summary>
+    public const float NutrientMaxBoost = 1f;
+
+    /// <summary>늘어난 성장 1 kg마다 쓰이는 영양(kg).</summary>
+    public const float NutrientPerExtraGrowth = 0.5f;
+
+    /// <summary>쓰이지 않은 영양이 씻겨 나가는 비율(/일).</summary>
+    public const float NutrientLeachPerDay = 0.02f;
+
     public int Size { get; }
     public float[] Biomass { get; }
     public float[] Capacity { get; }
+
+    /// <summary>셀별 토양 영양(kg). 사체가 분해되며 쌓이고, 식생 성장을 빠르게 하면서 줄어든다.</summary>
+    public float[] Nutrient { get; }
+
+    public double TotalNutrientAdded { get; set; }
+    public double TotalNutrientUsed { get; set; }
+    public double TotalNutrientLeached { get; set; }
 
     public double InitialTotal { get; set; }
     public double TotalGrown { get; set; }
@@ -32,6 +51,22 @@ public sealed class VegetationGrid
         Size = size;
         Biomass = new float[size * size];
         Capacity = new float[size * size];
+        Nutrient = new float[size * size];
+    }
+
+    /// <summary>셀에 토양 영양을 더한다(사체 분해).</summary>
+    public void AddNutrient(int cell, float kg)
+    {
+        if (!(kg > 0f)) return;
+        Nutrient[cell] += kg;
+        TotalNutrientAdded += kg;
+    }
+
+    public double SumNutrient()
+    {
+        double total = 0;
+        for (int i = 0; i < Nutrient.Length; i++) total += Nutrient[i];
+        return total;
     }
 
     /// <summary>생물군계·토양·설정에서 셀별 수용량을 계산한다. 지형이 바뀌면 다시 부른다.</summary>
@@ -114,11 +149,23 @@ public sealed class VegetationGrid
         float baseRate = plant.GrowthRatePerDay * env.Light * tempFactor * cfg.VegetationGrowthScale;
         float moistSpan = MathF.Max(1e-3f, plant.OptimalMoisture - plant.MinMoisture);
 
-        double grown = 0, died = 0, total = 0;
+        double grown = 0, died = 0, total = 0, used = 0, leached = 0;
+        float leachFraction = MathF.Min(1f, NutrientLeachPerDay * daysDt);
         for (int i = 0; i < Biomass.Length; i++)
         {
             float k = Capacity[i];
-            if (k <= 0f) continue;
+            float n = Nutrient[i];
+            if (n > 0f)
+            {
+                float lost = n * leachFraction;
+                n -= lost;
+                leached += lost;
+            }
+            if (k <= 0f)
+            {
+                Nutrient[i] = n;
+                continue;
+            }
             float b = Biomass[i];
             float m = MathUtil.Clamp01((terrain.Moisture[i] - plant.MinMoisture) / moistSpan);
 
@@ -128,7 +175,27 @@ public sealed class VegetationGrid
                 float rate = baseRate * m * biomes[terrain.Biome[i]].GrowthFactor;
                 growth = rate * (b + plant.SeedFraction * k) * (1f - b / k) * daysDt;
                 if (growth > k - b) growth = k - b;
+
+                // 토양 영양이 있으면 더 빨리 자라고, 늘어난 만큼 영양을 쓴다.
+                if (n > 0f && growth > 0f)
+                {
+                    float boost = NutrientMaxBoost * n / (n + NutrientHalfSaturationKg);
+                    float extra = MathF.Min(growth * boost, k - b - growth);
+                    float need = extra * NutrientPerExtraGrowth;
+                    if (need > n)
+                    {
+                        extra = n / NutrientPerExtraGrowth;
+                        need = n;
+                    }
+                    if (extra > 0f)
+                    {
+                        growth += extra;
+                        n -= need;
+                        used += need;
+                    }
+                }
             }
+            Nutrient[i] = n < 0f ? 0f : n;
 
             // 고사: 수분이나 온도 조건이 최적의 35% 아래로 떨어진 만큼 비례해서 줄어든다.
             float worst = m < tempFactor ? m : tempFactor;
@@ -149,6 +216,8 @@ public sealed class VegetationGrid
         }
         TotalGrown += grown;
         TotalDieback += died;
+        TotalNutrientUsed += used;
+        TotalNutrientLeached += leached;
         LastTotal = total;
     }
 
@@ -169,6 +238,8 @@ public sealed class VegetationGrid
     public void AddToHash(ref StateHasher h)
     {
         h.Add(Biomass.AsSpan());
+        h.Add(Nutrient.AsSpan());
         h.Add(TotalGrown); h.Add(TotalConsumed); h.Add(TotalDieback); h.Add(InitialTotal);
+        h.Add(TotalNutrientAdded); h.Add(TotalNutrientUsed); h.Add(TotalNutrientLeached);
     }
 }

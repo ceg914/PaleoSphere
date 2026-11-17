@@ -19,15 +19,24 @@ public static class UtilityBrain
     public const float DrinkSatedHydration = 0.92f;
     public const float RestedFatigue = 0.12f;
 
+    /// <summary>육식동물은 에너지가 이보다 높으면 거의 사냥하지 않는다(배부른 포식자).</summary>
+    public const float PredatorSatedEnergy = 0.55f;
+
     // 동점일 때의 우선순위.
     private static readonly BehaviorKind[] Order =
     {
-        BehaviorKind.Flee, BehaviorKind.Drink, BehaviorKind.Forage, BehaviorKind.Rest, BehaviorKind.Explore, BehaviorKind.Idle,
+        BehaviorKind.Flee, BehaviorKind.Drink, BehaviorKind.Forage, BehaviorKind.Hunt, BehaviorKind.Rest, BehaviorKind.Explore, BehaviorKind.Idle,
     };
 
-    /// <summary>c.LastScores, c.LastReason, c.LastDecisionTick을 채우고 고른 행동을 돌려준다.</summary>
-    public static BehaviorKind Decide(Creature c, WorldState w, bool foodNearby)
+    /// <summary>
+    /// c.LastScores, c.LastReason, c.LastDecisionTick을 채우고 고른 행동을 돌려준다.
+    /// foodNearby: 초식동물은 먹을 식생, 육식동물은 고기가 남은 사체가 가까이 있는지.
+    /// preyVisible: 육식동물의 지각 범위에 사냥감이 있는지.
+    /// </summary>
+    public static BehaviorKind Decide(Creature c, WorldState w, bool foodNearby, bool preyVisible = false)
     {
+        SpeciesDefinition sp = w.Species[c.SpeciesIndex];
+        bool carnivore = sp.Diet == Diet.Carnivore;
         var terrain = w.Terrain;
         int cell = terrain.CellIndexAt(c.Position);
         bool waterReachable = !float.IsPositiveInfinity(terrain.WaterPathDistance[cell]);
@@ -41,8 +50,29 @@ public static class UtilityBrain
         float[] s = c.LastScores;
         s[(int)BehaviorKind.Idle] = 0.10f;
 
-        s[(int)BehaviorKind.Forage] = (0.6f * hunger + 0.6f * hunger * hunger) * (foodNearby ? 1f : 0.75f)
-            + (c.Behavior == BehaviorKind.Forage && c.Energy < ForageSatedEnergy ? 0.20f : 0f);
+        float appetite = 0.6f * hunger + 0.6f * hunger * hunger;
+        if (carnivore)
+        {
+            // 육식동물의 섭식은 사체 먹기다. 사체가 없으면 사냥한다.
+            s[(int)BehaviorKind.Forage] = foodNearby
+                ? appetite + 0.15f + (c.Behavior == BehaviorKind.Forage && c.Energy < ForageSatedEnergy ? 0.20f : 0f)
+                : 0f;
+            float hunt = 0f;
+            if (sp.IsPredator)
+            {
+                float hungerDrive = c.Energy < PredatorSatedEnergy ? 0.7f * hunger + 0.6f * hunger * hunger : 0.05f * hunger;
+                hunt = hungerDrive * (preyVisible ? 1f : 0.55f);
+                if (c.HuntCooldownUntilTick > w.Clock.Tick) hunt *= 0.3f;
+                if (c.Behavior == BehaviorKind.Hunt && c.TargetEntityId >= 0) hunt += 0.25f;
+            }
+            s[(int)BehaviorKind.Hunt] = hunt;
+        }
+        else
+        {
+            s[(int)BehaviorKind.Forage] = appetite * (foodNearby ? 1f : 0.75f)
+                + (c.Behavior == BehaviorKind.Forage && c.Energy < ForageSatedEnergy ? 0.20f : 0f);
+            s[(int)BehaviorKind.Hunt] = 0f;
+        }
 
         s[(int)BehaviorKind.Drink] = waterReachable
             ? 0.5f * thirst + 0.9f * thirst * thirst
@@ -73,7 +103,7 @@ public static class UtilityBrain
         if (c.Energy <= SafetyEnergy)
         {
             c.LastReason = DecisionReason.SafetyStarvation;
-            return BehaviorKind.Forage;
+            return carnivore && !foodNearby && sp.IsPredator ? BehaviorKind.Hunt : BehaviorKind.Forage;
         }
 
         BehaviorKind best = BehaviorKind.Idle;
@@ -100,6 +130,8 @@ public static class UtilityBrain
             BehaviorKind.Drink => c.Hydration >= DrinkSatedHydration - 0.04f,
             BehaviorKind.Rest => c.Fatigue <= RestedFatigue + 0.03f,
             BehaviorKind.Flee => c.Fear < 0.2f,
+            // 사냥은 잡았을 때(Kill로 따로 기록) 말고는 완료가 아니다.
+            BehaviorKind.Hunt => false,
             _ => true,
         };
     }
