@@ -42,6 +42,9 @@ public sealed class Creature
     public Sex Sex;
     public LifeStage LifeStage;
 
+    /// <summary>이 개체의 수명(일). 태어날 때(배치될 때) 정해지고, 이 나이가 되면 노화로 죽는다.</summary>
+    public float LifespanDays;
+
     // 0~1 척도.
     public float Health = 1f;
     public float Energy = 1f;
@@ -104,7 +107,7 @@ public sealed class Creature
     {
         h.Add(Id); h.Add(SpeciesIndex);
         h.Add(Position); h.Add(PrevPosition); h.Add(Heading); h.Add(PrevHeading); h.Add(CurrentSpeed);
-        h.Add(AgeDays); h.Add((int)Sex); h.Add((int)LifeStage);
+        h.Add(AgeDays); h.Add((int)Sex); h.Add((int)LifeStage); h.Add(LifespanDays);
         h.Add(Health); h.Add(Energy); h.Add(Hydration); h.Add(Fatigue); h.Add(Fear);
         h.Add((int)Behavior); h.Add((int)Activity); h.Add(BehaviorStartTick);
         h.Add(HasTarget); h.Add(Target); h.Add(TargetEntityId); h.Add(NextRetargetTick);

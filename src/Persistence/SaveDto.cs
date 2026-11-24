@@ -118,6 +118,9 @@ public sealed class CreatureDto
     public float AgeDays { get; set; }
     public int Sex { get; set; }
     public int LifeStage { get; set; }
+
+    /// <summary>개체 수명(스키마 3부터). 0이면 종의 최대 수명으로 읽는다.</summary>
+    public float LifespanDays { get; set; }
     public float Health { get; set; }
     public float Energy { get; set; }
     public float Hydration { get; set; }

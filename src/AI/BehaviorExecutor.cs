@@ -215,7 +215,7 @@ public static class BehaviorExecutor
 
         SpeciesDefinition preySp = w.Species[prey.SpeciesIndex];
         float dist = Vec2.Distance(c.Position, prey.Position);
-        float reach = (sp.BodyRadiusM * c.TraitBodySize + preySp.BodyRadiusM * prey.TraitBodySize) * 1.15f + 1f;
+        float reach = (sp.BodyRadiusM * LifeHistory.BodyScale(c, sp) + preySp.BodyRadiusM * LifeHistory.BodyScale(prey, preySp)) * 1.15f + 1f;
         c.Target = prey.Position;
         c.HasTarget = true;
 
@@ -267,9 +267,13 @@ public static class BehaviorExecutor
         float vulnerability = 1.6f - prey.Health;
         if (prey.Activity == ActivityKind.Run) vulnerability *= 0.75f;
         if (prey.Fatigue > 0.7f) vulnerability *= 1.3f;
-        float massRatio = sp.BodyMassKg * c.TraitBodySize / MathF.Max(1f, preySp.BodyMassKg * prey.TraitBodySize);
+        // 늙은 사냥감은 더 쉽게 쓰러진다.
+        vulnerability *= 1f + 0.3f * LifeHistory.SeniorProgress(prey, preySp);
+        float massRatio = LifeHistory.MassKg(c, sp) / MathF.Max(1f, LifeHistory.MassKg(prey, preySp));
         float size = MathUtil.Clamp(MathF.Sqrt(massRatio), 0.5f, 1.5f);
-        float chance = MathUtil.Clamp01(sp.AttackSuccess * vulnerability * size * (1f - 0.5f * preySp.Defense));
+        // 뿔·프릴 같은 방어 수단은 몸과 함께 자란다고 보고 몸길이 비율만큼만 쓴다.
+        float defense = preySp.Defense * LifeHistory.LengthFraction(preySp, prey.AgeDays);
+        float chance = MathUtil.Clamp01(sp.AttackSuccess * vulnerability * size * (1f - 0.5f * defense));
         c.Fatigue = MathUtil.Clamp01(c.Fatigue + 0.02f);
 
         if (c.Rng.NextFloat() < chance)
@@ -282,10 +286,10 @@ public static class BehaviorExecutor
         prey.Fear = 1f;
         prey.ThreatPosition = c.Position;
         prey.ThreatUntilTick = tick + 300;
-        if (c.Rng.NextFloat() < preySp.Defense)
+        if (c.Rng.NextFloat() < defense)
         {
             // 반격: 공격자를 다치게 하지만 바로 죽이지는 않는다(약해진 포식자는 굶주림으로 이어질 수 있다).
-            c.Health = MathF.Max(0.05f, c.Health - 0.25f * preySp.Defense);
+            c.Health = MathF.Max(0.05f, c.Health - 0.25f * defense);
         }
         if (prey.Health <= 0f) Kill(c, prey, w);
     }
@@ -328,7 +332,7 @@ public static class BehaviorExecutor
             return;
         }
 
-        float reach = sp.BodyRadiusM * c.TraitBodySize + w.Species[target.SpeciesIndex].BodyRadiusM + CarcassRules.FeedReachM;
+        float reach = sp.BodyRadiusM * LifeHistory.BodyScale(c, sp) + w.Species[target.SpeciesIndex].BodyRadiusM + CarcassRules.FeedReachM;
         if (Vec2.Distance(c.Position, target.Position) > reach)
         {
             if (c.ChaseStartTick >= 0 && tick - c.ChaseStartTick > ScavengeApproachTicks)
@@ -349,12 +353,13 @@ public static class BehaviorExecutor
         }
         c.ChaseStartTick = tick;
 
-        float want = sp.IntakeKgPerHour * hoursDt * c.TraitBodySize;
+        float food = LifeHistory.FoodScale(c, sp);
+        float want = sp.IntakeKgPerHour * hoursDt * food;
         float take = MathF.Min(want, target.MeatKg);
         target.MeatKg -= take;
         target.RemainsKg -= take;
         w.CarcassMassEaten += take;
-        c.Energy = MathUtil.Clamp01(c.Energy + take * sp.EnergyPerKg / c.TraitBodySize);
+        c.Energy = MathUtil.Clamp01(c.Energy + take * sp.EnergyPerKg / food);
         c.BoutAmount += take;
         // 먹는 동안 사체 쪽을 바라보게 목표는 남겨 둔다(이동은 하지 않는다).
         c.Target = target.Position;
@@ -405,7 +410,8 @@ public static class BehaviorExecutor
 
     private static void UpdateForage(Creature c, SpeciesDefinition sp, WorldState w, int cell, float hoursDt, long tick)
     {
-        float want = sp.IntakeKgPerHour * hoursDt * c.TraitBodySize;
+        float food = LifeHistory.FoodScale(c, sp);
+        float want = sp.IntakeKgPerHour * hoursDt * food;
         float reachable = ReachableForage(w, cell);
 
         // 넉넉한 자리에서만 먹기 시작하고, 먹던 중이면 거의 바닥날 때까지 계속한다.
@@ -419,7 +425,7 @@ public static class BehaviorExecutor
         if (reachable >= threshold && reachable > 0f)
         {
             float got = ConsumeReachable(w, cell, want);
-            c.Energy = MathUtil.Clamp01(c.Energy + got * sp.EnergyPerKg / c.TraitBodySize);
+            c.Energy = MathUtil.Clamp01(c.Energy + got * sp.EnergyPerKg / food);
             c.BoutAmount += got;
             c.HasTarget = false;
             c.Activity = ActivityKind.Eat;

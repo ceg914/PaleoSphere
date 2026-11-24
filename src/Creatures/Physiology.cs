@@ -59,17 +59,24 @@ public static class Physiology
         }
         if (c.Energy > 0.4f && c.Hydration > 0.4f && c.Health < 1f)
         {
-            c.Health += sp.HealthRegenPerDay * daysDt;
+            c.Health += sp.HealthRegenPerDay * LifeHistory.RegenFactor(c, sp) * daysDt;
             if (c.Health > 1f) c.Health = 1f;
         }
 
         c.AgeDays += daysDt;
+        c.LifeStage = LifeHistory.StageOf(c, sp);
 
         if (c.Health <= 0f)
         {
             c.Health = 0f;
             c.Alive = false;
             c.DeathCause = c.DehydrationDamage > c.StarveDamage ? DeathCause.Dehydration : DeathCause.Starvation;
+        }
+        else if (c.LifespanDays > 0f && c.AgeDays >= c.LifespanDays)
+        {
+            c.Health = 0f;
+            c.Alive = false;
+            c.DeathCause = DeathCause.OldAge;
         }
     }
 }

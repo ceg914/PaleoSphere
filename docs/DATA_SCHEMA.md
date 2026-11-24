@@ -48,6 +48,19 @@
 
 계산식은 `docs/SIMULATION_SPEC.md` 10장에 있습니다.
 
+`life_history` 칸(0.3.0에서 선택 키 추가):
+
+| 키 | 범위 | 없을 때 | 뜻 |
+|---|---|---|---|
+| `adult_age_days` | 0~100000 | 필수 | 다 자라는 나이 |
+| `max_age_days` | 1~1000000 | 필수 | 가장 오래 사는 개체의 수명 |
+| `hatch_length_fraction` | 0.02~1 | 0.1 | 갓 태어났을 때 몸길이(성체 대비) |
+| `subadult_age_days` | 0~`adult_age_days` | 성체 나이의 35% | 새끼에서 아성체가 되는 나이 |
+| `senescence_fraction` | 0.3~1 | 0.8 | 개체 수명 가운데 노년이 시작되는 비율 |
+| `lifespan_variation` | 0~0.5 | 0.15 | 개체 수명이 최대 수명보다 짧아질 수 있는 비율 |
+
+가장 짧은 수명에서도 노년이 성체 나이 뒤에 와야 합니다(`max_age_days × (1 − lifespan_variation) × senescence_fraction ≥ adult_age_days`). 어기면 그 파일을 오류로 건너뜁니다.
+
 ## 세이브 파일 (`*.psave`)
 
 gzip으로 압축한 JSON입니다. 압축하지 않은 JSON도 읽습니다.
@@ -55,8 +68,8 @@ gzip으로 압축한 JSON입니다. 압축하지 않은 JSON도 읽습니다.
 ```json
 {
   "format": "paleosphere-save",
-  "schema_version": 2,
-  "simulation_version": "0.2.0",
+  "schema_version": 3,
+  "simulation_version": "0.3.0",
   "world_seed": "20261116",
   "saved_at_utc": "2026-11-17T02:20:00Z",
   "state_hash": "…16자리 16진수…",
@@ -109,6 +122,7 @@ gzip으로 압축한 JSON입니다. 압축하지 않은 JSON도 읽습니다.
 | 변환 | 바뀐 것 |
 |---|---|
 | 1 → 2 | 빈 `carcasses` 배열을 넣고, 개체의 행동 점수를 6개에서 7개(사냥)로 늘림. 토양 영양 배열과 사냥 상태는 없으면 기본값(0, −1)으로 읽음 |
+| 2 → 3 | JSON은 그대로. 개체 수명(`lifespan_days`)이 없으면 읽을 때 종의 최대 수명을 줌. 생애 단계에 노년(3)이 생김 |
 
 스키마 1 세이브는 불러올 수 있지만, 0.1.0과 0.2.0은 규칙이 달라 불러온 뒤의 진행은 0.1.0에서 이어 돌린 결과와 같지 않습니다.
 

@@ -114,7 +114,10 @@ public static class Perception
             float dSq = Vec2.DistanceSquared(c.Position, o.Position);
             if (dSq > rangeSq) continue;
             float d = System.MathF.Sqrt(dSq);
-            float weakness = 1.3f - 0.6f * o.Health + 0.3f * o.Fatigue;
+            SpeciesDefinition os = w.Species[o.SpeciesIndex];
+            // 어리거나 늙은 개체를 노린다(작을수록, 노년이 깊을수록 점수가 오른다).
+            float weakness = 1.3f - 0.6f * o.Health + 0.3f * o.Fatigue
+                + 0.5f * (1f - LifeHistory.LengthFraction(os, o.AgeDays)) + 0.3f * LifeHistory.SeniorProgress(o, os);
             float score = weakness / (1f + d / 20f);
             // 깊은 물 건너편처럼 곧장 갈 수 없는 사냥감은 고르지 않는다.
             if (score > bestScore && w.Terrain.IsLineWalkable(c.Position, o.Position))

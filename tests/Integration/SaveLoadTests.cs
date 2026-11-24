@@ -365,6 +365,9 @@ public class SaveLoadTests : IDisposable
         Assert.Equal(3, sim.World.Carcasses.Count);
         Assert.Equal(3, sim.Stats.TotalDeathsByCause(DeathCause.Predation));
         Assert.True(sim.World.Vegetation.SumNutrient() > 0);
+        // 스키마 2에는 개체 수명이 없다. 읽을 때 종의 최대 수명을 받는다.
+        Assert.Contains(r.Warnings, w => w.Contains("2 → 3"));
+        Assert.All(sim.Creatures, c => Assert.Equal(sim.World.Species[c.SpeciesIndex].MaxAgeDays, c.LifespanDays));
         TestData.Run(sim, 300);
     }
 
@@ -427,8 +430,8 @@ public class SaveMigrationTests
             Assert.True(SaveMigrations.CanMigrate(0));
             var log = new System.Collections.Generic.List<string>();
             JsonObject upgraded = SaveMigrations.Upgrade(node, 0, log);
-            // 0→1(이 테스트가 등록한 것)과 1→2(내장) 두 단계가 적용된다.
-            Assert.Equal(2, log.Count);
+            // 0→1(이 테스트가 등록한 것)과 내장된 1→2, 2→3이 차례로 적용된다.
+            Assert.Equal(SimVersion.SaveSchema, log.Count);
             header.SchemaVersion = SimVersion.SaveSchema;
             byte[] rebuilt = SaveSerializer.BuildFile(Encoding.UTF8.GetBytes(upgraded.ToJsonString()), header);
             LoadResult r = SaveSerializer.Deserialize(rebuilt, TestData.Data);

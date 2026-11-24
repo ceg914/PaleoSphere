@@ -111,6 +111,32 @@ public class BrainTests
     }
 
     [Fact]
+    public void SafetyRule_ExhaustedStarvingPredator_RestsBeforeHunting()
+    {
+        // 0.2.0의 버그: 지친 굶주린 포식자가 사냥을 강제받고 바로 포기하기를 되풀이하며 쉬지 못했다.
+        SimulationCore sim = DaySim();
+        sim.Enqueue(new SpawnCreaturesCommand(TestData.Predator, 1, sim.Creatures[0].Position, 3f));
+        sim.ApplyPendingCommands();
+        Creature rex = sim.Creatures[^1];
+        Assert.True(sim.World.Species[rex.SpeciesIndex].IsPredator);
+        rex.Energy = 0.05f; rex.Hydration = 0.95f; rex.Fear = 0f;
+        rex.Behavior = BehaviorKind.Hunt;
+        rex.Fatigue = 0.95f;
+        Assert.Equal(BehaviorKind.Rest, UtilityBrain.Decide(rex, sim.World, false));
+        Assert.Equal(DecisionReason.SafetyStarvation, rex.LastReason);
+        // 쉬기 시작했으면 피로가 절반 아래로 내려갈 때까지 쉰다.
+        rex.Behavior = BehaviorKind.Rest;
+        rex.Fatigue = 0.6f;
+        Assert.Equal(BehaviorKind.Rest, UtilityBrain.Decide(rex, sim.World, false));
+        rex.Fatigue = 0.4f;
+        Assert.Equal(BehaviorKind.Hunt, UtilityBrain.Decide(rex, sim.World, false));
+        // 사냥하던 중이면 피로가 한계 아래일 때 계속 사냥한다.
+        rex.Behavior = BehaviorKind.Hunt;
+        rex.Fatigue = 0.7f;
+        Assert.Equal(BehaviorKind.Hunt, UtilityBrain.Decide(rex, sim.World, false));
+    }
+
+    [Fact]
     public void ExpiredThreat_DoesNotCauseFlee()
     {
         SimulationCore sim = DaySim();

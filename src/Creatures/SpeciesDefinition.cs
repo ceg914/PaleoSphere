@@ -75,6 +75,18 @@ public sealed class SpeciesDefinition
     public float AdultAgeDays { get; init; }
     public float MaxAgeDays { get; init; }
 
+    /// <summary>갓 태어났을 때 몸길이(성체에 대한 비율).</summary>
+    public float HatchLengthFraction { get; init; } = 0.1f;
+
+    /// <summary>새끼에서 아성체가 되는 나이(일).</summary>
+    public float SubadultAgeDays { get; init; }
+
+    /// <summary>개체 수명 가운데 노년이 시작되는 비율.</summary>
+    public float SenescenceFraction { get; init; } = 0.8f;
+
+    /// <summary>개체 수명이 최대 수명보다 짧아질 수 있는 비율(0이면 모두 최대 수명까지 산다).</summary>
+    public float LifespanVariation { get; init; } = 0.15f;
+
     /// <summary>배치할 수 있는 생물군계 id. 비어 있으면 마른 땅 어디든.</summary>
     public IReadOnlyList<string> PlacementBiomes { get; init; } = Array.Empty<string>();
 

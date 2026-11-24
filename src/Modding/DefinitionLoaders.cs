@@ -142,14 +142,23 @@ public static class DefinitionLoaders
             regen = ph.Num("health_regen_per_day", 0f, 10f);
         }
 
-        float adult = 0f, maxAge = 100f;
+        float adult = 0f, maxAge = 100f, hatchLength = 0.1f, subadult = -1f, senescence = 0.8f, lifespanVariation = 0.15f;
         if (f.TryObj("life_history", out JsonFields life))
         {
             life.Evidence();
             adult = life.Num("adult_age_days", 0f, 100000f);
             maxAge = life.Num("max_age_days", 1f, 1000000f);
             if (maxAge <= adult) report.Error(source, "max_age_days는 adult_age_days보다 커야 합니다.");
+            hatchLength = life.Num("hatch_length_fraction", 0.02f, 1f, 0.1f);
+            subadult = life.Num("subadult_age_days", 0f, 100000f, -1f);
+            senescence = life.Num("senescence_fraction", 0.3f, 1f, 0.8f);
+            lifespanVariation = life.Num("lifespan_variation", 0f, 0.5f, 0.15f);
+            if (subadult > adult) report.Error(source, "subadult_age_days는 adult_age_days보다 클 수 없습니다.");
+            // 노년이 성체가 되기 전에 시작하면 생애 단계가 꼬인다(가장 짧은 수명 기준으로 검사).
+            if (maxAge * (1f - lifespanVariation) * senescence < adult)
+                report.Error(source, "가장 짧은 수명에서도 노년(수명 × senescence_fraction)이 adult_age_days 뒤에 와야 합니다.");
         }
+        if (subadult < 0f) subadult = adult * 0.35f;
 
         var biomes = new List<string>();
         if (f.TryObj("placement", out JsonFields placement, required: false))
@@ -243,6 +252,10 @@ public static class DefinitionLoaders
             HealthRegenPerDay = regen,
             AdultAgeDays = adult,
             MaxAgeDays = maxAge,
+            HatchLengthFraction = hatchLength,
+            SubadultAgeDays = subadult,
+            SenescenceFraction = senescence,
+            LifespanVariation = lifespanVariation,
             PlacementBiomes = biomes,
             ProxyShape = shape,
             ProxyColorR = color[0],

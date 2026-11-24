@@ -50,6 +50,7 @@ public enum LifeStage : byte
     Juvenile = 0,
     Subadult = 1,
     Adult = 2,
+    Senior = 3,
 }
 
 /// <summary>성별. 첫 버전은 번식이 없어 Unknown만 쓴다.</summary>

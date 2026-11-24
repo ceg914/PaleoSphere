@@ -267,6 +267,33 @@
           "type": "number",
           "minimum": 1,
           "maximum": 1000000
+        },
+        "hatch_length_fraction": {
+          "type": "number",
+          "minimum": 0.02,
+          "maximum": 1,
+          "default": 0.1,
+          "description": "갓 태어났을 때 몸길이(성체에 대한 비율)"
+        },
+        "subadult_age_days": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000,
+          "description": "새끼에서 아성체가 되는 나이. 없으면 adult_age_days × 0.35"
+        },
+        "senescence_fraction": {
+          "type": "number",
+          "minimum": 0.3,
+          "maximum": 1,
+          "default": 0.8,
+          "description": "개체 수명 가운데 노년이 시작되는 비율"
+        },
+        "lifespan_variation": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.5,
+          "default": 0.15,
+          "description": "개체 수명이 max_age_days보다 짧아질 수 있는 비율"
         }
       }
     },

@@ -14,7 +14,7 @@ public class DeterminismTests
     /// 이 값은 개발 환경(Linux), GitHub의 Ubuntu 러너, Windows 러너에서 같게 나온다.
     /// 어느 한 곳에서만 실패하면 코어에 플랫폼 수학 함수(MathF.Sin 등)가 섞여 들어간 것이다. DetMath를 쓴다.
     /// </summary>
-    private const string GoldenHash = "9801f95ba4426e35";
+    private const string GoldenHash = "dddb57be64aae1c6";
 
     private static SimulationCore Reference()
     {

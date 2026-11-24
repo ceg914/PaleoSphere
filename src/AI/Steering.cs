@@ -67,7 +67,7 @@ public sealed class Steering
                     int cell = terrain.CellIndexAt(c.Position);
                     float terrainFactor = w.Biomes[terrain.Biome[cell]].MoveSpeedFactor;
                     speed = (c.Activity == ActivityKind.Run ? sp.RunSpeedMps : sp.WalkSpeedMps)
-                            * c.TraitSpeed * (0.6f + 0.4f * c.Health) * (1f - 0.3f * c.Fatigue) * terrainFactor;
+                            * c.TraitSpeed * LifeHistory.SpeedFactor(c, sp) * (0.6f + 0.4f * c.Health) * (1f - 0.3f * c.Fatigue) * terrainFactor;
                 }
             }
 
@@ -169,7 +169,7 @@ public sealed class Steering
         for (int i = 0; i < count; i++)
         {
             Creature c = creatures[i];
-            float r = w.Species[c.SpeciesIndex].BodyRadiusM * c.TraitBodySize;
+            float r = w.Species[c.SpeciesIndex].BodyRadiusM * LifeHistory.BodyScale(c, w.Species[c.SpeciesIndex]);
             _radius[i] = r;
             _pos[i] = c.Position;
             if (r > maxRadius) maxRadius = r;

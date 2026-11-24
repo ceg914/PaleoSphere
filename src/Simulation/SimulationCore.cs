@@ -173,7 +173,6 @@ public sealed class SimulationCore
             PrevPosition = position,
             Rng = Pcg32.Create(World.Config.Seed, (ulong)id),
             Sex = Sex.Unknown,
-            LifeStage = LifeStage.Adult,
         };
         c.Heading = c.Rng.Range(-MathUtil.Pi, MathUtil.Pi);
         c.PrevHeading = c.Heading;
@@ -185,6 +184,8 @@ public sealed class SimulationCore
         c.TraitBodySize = MathUtil.Clamp(1f + 0.04f * c.Rng.NextGaussianApprox(), 0.85f, 1.15f);
         c.TraitMetabolism = MathUtil.Clamp(1f + 0.04f * c.Rng.NextGaussianApprox(), 0.85f, 1.15f);
         c.TraitSpeed = MathUtil.Clamp(1f + 0.04f * c.Rng.NextGaussianApprox(), 0.85f, 1.15f);
+        c.LifespanDays = LifeHistory.RollLifespan(sp, c.Rng.NextFloat());
+        c.LifeStage = LifeHistory.StageOf(c, sp);
         return c;
     }
 
@@ -287,7 +288,7 @@ public sealed class SimulationCore
                 }
                 else
                 {
-                    float bite = sp.IntakeKgPerHour * hoursDt * c.TraitBodySize;
+                    float bite = sp.IntakeKgPerHour * hoursDt * LifeHistory.FoodScale(c, sp);
                     foodNearby = Perception.IsFoodNearby(c, w, Perception.GoodCellKg(w, bite) * 0.5f);
                 }
                 BehaviorKind chosen = UtilityBrain.Decide(c, w, foodNearby, preyVisible);
@@ -407,8 +408,7 @@ public sealed class SimulationCore
 
     private void AddCarcass(Creature c, SpeciesDefinition sp)
     {
-        float size = c.TraitBodySize;
-        float mass = sp.BodyMassKg * size * size * size;
+        float mass = LifeHistory.MassKg(c, sp);
         // 굶어 죽은 몸에는 먹을 살이 적다.
         float meat = mass * CarcassRules.EdibleFraction * (c.DeathCause == DeathCause.Starvation ? 0.6f : 1f);
         World.Carcasses.Add(new Carcass
@@ -518,6 +518,7 @@ public sealed class SimulationCore
         for (int i = 0; i < count; i++)
         {
             Creature c = _creatures[i];
+            SpeciesDefinition sp = World.Species[c.SpeciesIndex];
             snapshot.Creatures[i] = new CreatureSnapshot
             {
                 Id = c.Id,
@@ -527,7 +528,7 @@ public sealed class SimulationCore
                 PrevHeading = c.PrevHeading,
                 Heading = c.Heading,
                 Speed = c.CurrentSpeed,
-                BodySize = c.TraitBodySize,
+                BodySize = LifeHistory.BodyScale(c, sp),
                 Health = c.Health,
                 Energy = c.Energy,
                 Hydration = c.Hydration,
@@ -567,6 +568,8 @@ public sealed class SimulationCore
             SpeciesIndex = c.SpeciesIndex,
             Position = c.Position,
             AgeDays = c.AgeDays,
+            LifespanDays = c.LifespanDays,
+            BodyScale = LifeHistory.BodyScale(c, World.Species[c.SpeciesIndex]),
             Sex = c.Sex,
             LifeStage = c.LifeStage,
             Health = c.Health,

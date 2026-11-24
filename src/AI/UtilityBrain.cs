@@ -22,6 +22,9 @@ public static class UtilityBrain
     /// <summary>육식동물은 에너지가 이보다 높으면 거의 사냥하지 않는다(배부른 포식자).</summary>
     public const float PredatorSatedEnergy = 0.55f;
 
+    /// <summary>굶주린 포식자가 지쳐서 쉬기 시작하면 피로가 이 값 아래로 내려갈 때까지 쉰다.</summary>
+    public const float ExhaustedRestUntil = 0.5f;
+
     // 동점일 때의 우선순위.
     private static readonly BehaviorKind[] Order =
     {
@@ -103,7 +106,12 @@ public static class UtilityBrain
         if (c.Energy <= SafetyEnergy)
         {
             c.LastReason = DecisionReason.SafetyStarvation;
-            return carnivore && !foodNearby && sp.IsPredator ? BehaviorKind.Hunt : BehaviorKind.Forage;
+            if (!(carnivore && !foodNearby && sp.IsPredator)) return BehaviorKind.Forage;
+            // 지쳐서 쫓을 수 없으면 먼저 쉰다. 쉬기 시작했으면 피로가 절반 아래로 내려갈 때까지 쉰다.
+            // (이 규칙이 없으면 굶주린 포식자가 추격을 시작하자마자 포기하기를 되풀이하며 쉬지 못하고 굶어 죽는다.)
+            bool exhausted = c.Fatigue > BehaviorExecutor.ChaseFatigueLimit
+                || (c.Behavior == BehaviorKind.Rest && c.Fatigue > ExhaustedRestUntil);
+            return exhausted ? BehaviorKind.Rest : BehaviorKind.Hunt;
         }
 
         BehaviorKind best = BehaviorKind.Idle;

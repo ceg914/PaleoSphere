@@ -15,6 +15,8 @@ public struct CreatureSnapshot
     public float PrevHeading;
     public float Heading;
     public float Speed;
+
+    /// <summary>몸 크기 배율(성체 평균 = 1). 나이에 따른 성장과 체격 형질을 함께 반영한다.</summary>
     public float BodySize;
     public float Health;
     public float Energy;
@@ -68,6 +70,12 @@ public sealed class CreatureDetails
     public int SpeciesIndex;
     public Vec2 Position;
     public float AgeDays;
+
+    /// <summary>개체 수명(일). 이 나이에 노화로 죽는다.</summary>
+    public float LifespanDays;
+
+    /// <summary>지금 몸 크기(성체 평균 = 1). 나이와 체격 형질을 함께 반영한다.</summary>
+    public float BodyScale;
     public Sex Sex;
     public LifeStage LifeStage;
     public float Health, Energy, Hydration, Fatigue, Fear;

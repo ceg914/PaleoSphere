@@ -11,12 +11,15 @@ namespace PaleoSphere.Persistence;
 ///
 /// 1 → 2 (시뮬레이션 0.2.0, 포식): 사체 목록이 생겼고 행동 점수가 6개에서 7개(사냥)로 늘었다.
 ///   토양 영양 배열과 개체의 사냥 상태는 비어 있으면 기본값으로 읽으므로 손대지 않는다.
+/// 2 → 3 (시뮬레이션 0.3.0, 성장·노화): 개체 수명(lifespan_days)과 노년 단계가 생겼다.
+///   수명이 없는 개체는 읽을 때 종의 최대 수명을 준다. JSON은 바꿀 것이 없다.
 /// </summary>
 public static class SaveMigrations
 {
     private static readonly Dictionary<int, Func<JsonObject, JsonObject>> Steps = new()
     {
         [1] = V1ToV2,
+        [2] = state => state,
     };
 
     private static JsonObject V1ToV2(JsonObject state)

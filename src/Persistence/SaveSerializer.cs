@@ -179,7 +179,7 @@ public static class SaveSerializer
                 X = cr.Position.X, Z = cr.Position.Z,
                 PrevX = cr.PrevPosition.X, PrevZ = cr.PrevPosition.Z,
                 Heading = cr.Heading, PrevHeading = cr.PrevHeading, Speed = cr.CurrentSpeed,
-                AgeDays = cr.AgeDays, Sex = (int)cr.Sex, LifeStage = (int)cr.LifeStage,
+                AgeDays = cr.AgeDays, Sex = (int)cr.Sex, LifeStage = (int)cr.LifeStage, LifespanDays = cr.LifespanDays,
                 Health = cr.Health, Energy = cr.Energy, Hydration = cr.Hydration, Fatigue = cr.Fatigue, Fear = cr.Fear,
                 Behavior = (int)cr.Behavior, Activity = (int)cr.Activity, BehaviorStartTick = cr.BehaviorStartTick,
                 HasTarget = cr.HasTarget, TargetX = cr.Target.X, TargetZ = cr.Target.Z,
@@ -647,7 +647,8 @@ public static class SaveSerializer
                 return null;
             }
             if (!In01(c.Health) || !In01(c.Energy) || !In01(c.Hydration) || !In01(c.Fatigue) || !In01(c.Fear)
-                || !Finite(c.AgeDays) || c.AgeDays < 0 || !Finite(c.BoutAmount) || !Finite(c.StarveDamage) || !Finite(c.DehydrationDamage))
+                || !Finite(c.AgeDays) || c.AgeDays < 0 || !Finite(c.LifespanDays) || c.LifespanDays < 0
+                || !Finite(c.BoutAmount) || !Finite(c.StarveDamage) || !Finite(c.DehydrationDamage))
             {
                 errors.Add($"{where}: 생리 값이 허용 범위를 벗어났습니다.");
                 return null;
@@ -658,7 +659,7 @@ public static class SaveSerializer
                 return null;
             }
             if (c.Behavior < 0 || c.Behavior >= BehaviorKinds.Count || c.Activity < 0 || c.Activity > (int)ActivityKind.Attack
-                || c.Sex < 0 || c.Sex > (int)Sex.Male || c.LifeStage < 0 || c.LifeStage > (int)LifeStage.Adult
+                || c.Sex < 0 || c.Sex > (int)Sex.Male || c.LifeStage < 0 || c.LifeStage > (int)LifeStage.Senior
                 || c.Reason < 0 || c.Reason > (int)DecisionReason.SafetyThreat || (c.AvoidSide != 1 && c.AvoidSide != -1))
             {
                 errors.Add($"{where}: 행동·상태 코드가 잘못되었습니다.");
@@ -680,6 +681,8 @@ public static class SaveSerializer
                 PrevHeading = c.PrevHeading,
                 CurrentSpeed = c.Speed,
                 AgeDays = c.AgeDays,
+                // 스키마 2 이전 세이브에는 수명이 없다. 종의 최대 수명으로 둔다.
+                LifespanDays = c.LifespanDays > 0f ? c.LifespanDays : data.Species[speciesMap[c.Species]].MaxAgeDays,
                 Sex = (Sex)c.Sex,
                 LifeStage = (LifeStage)c.LifeStage,
                 Health = c.Health,

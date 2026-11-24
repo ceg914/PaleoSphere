@@ -149,12 +149,12 @@ public static class Program
         PopulationStats st = sim.Stats;
         Console.WriteLine($"--- {days:0.##}일({totalTicks}틱) 실행: {runMs:0} ms, 틱당 평균 {runMs / totalTicks * 1000:0.0} µs, 최대 {sim.Profiler.MaxTickMs:0.00} ms");
         Console.WriteLine($"    구간 평균(ms): 식생 {sim.Profiler.SectionAverageMs(TickProfiler.Section.Vegetation):0.000}(갱신 틱만), 의사결정·생리 {sim.Profiler.SectionAverageMs(TickProfiler.Section.Brain):0.000}, 이동 {sim.Profiler.SectionAverageMs(TickProfiler.Section.Movement):0.000}");
-        Console.WriteLine($"    생존 {sim.CreatureCount}, 아사 {st.TotalDeathsByCause(DeathCause.Starvation)}, 탈수 {st.TotalDeathsByCause(DeathCause.Dehydration)}, 포식 {st.TotalDeathsByCause(DeathCause.Predation)}");
+        Console.WriteLine($"    생존 {sim.CreatureCount}, 아사 {st.TotalDeathsByCause(DeathCause.Starvation)}, 탈수 {st.TotalDeathsByCause(DeathCause.Dehydration)}, 포식 {st.TotalDeathsByCause(DeathCause.Predation)}, 노화 {st.TotalDeathsByCause(DeathCause.OldAge)}");
         for (int s = 0; s < sim.World.Species.Count; s++)
         {
             int alive = 0, kills = 0;
             foreach (Creature c in sim.Creatures) if (c.SpeciesIndex == s) { alive++; kills += c.Kills; }
-            Console.WriteLine($"    {sim.World.Species[s].Id}: 배치 {st.Spawned[s]}, 생존 {alive}, 아사 {st.DeathsOf(s, DeathCause.Starvation)}, 탈수 {st.DeathsOf(s, DeathCause.Dehydration)}, 포식당함 {st.DeathsOf(s, DeathCause.Predation)}, 사냥 성공(생존 개체 합) {kills}");
+            Console.WriteLine($"    {sim.World.Species[s].Id}: 배치 {st.Spawned[s]}, 생존 {alive}, 아사 {st.DeathsOf(s, DeathCause.Starvation)}, 탈수 {st.DeathsOf(s, DeathCause.Dehydration)}, 포식당함 {st.DeathsOf(s, DeathCause.Predation)}, 노화 {st.DeathsOf(s, DeathCause.OldAge)}, 사냥 성공(생존 개체 합) {kills}");
         }
         var world = sim.World;
         Console.WriteLine($"    사체 질량 장부: 생김 {world.CarcassMassCreated / 1000:0.0} t = 먹힘 {world.CarcassMassEaten / 1000:0.0} + 분해 {world.CarcassMassDecomposed / 1000:0.0} + 남음 {SumRemains(sim) / 1000:0.0} t | 토양 영양 더함 {veg2(sim).TotalNutrientAdded:0} 씀 {veg2(sim).TotalNutrientUsed:0} 씻김 {veg2(sim).TotalNutrientLeached:0} 남음 {veg2(sim).SumNutrient():0} kg");

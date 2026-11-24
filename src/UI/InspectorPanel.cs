@@ -204,7 +204,8 @@ public partial class InspectorPanel : PanelContainer
         _speciesIndex = d.SpeciesIndex;
         _title.Text = $"{Loc.Name(sp.NameKo, sp.NameEn)} #{d.Id}";
         _subtitle.Text = sp.ScientificName;
-        _meta.Text = Loc.F("inspector.age", d.AgeDays, Loc.T("stage." + d.LifeStage.ToString().ToLowerInvariant()), Loc.T("sex." + d.Sex.ToString().ToLowerInvariant()));
+        _meta.Text = Loc.F("inspector.age", d.AgeDays, Loc.T("stage." + d.LifeStage.ToString().ToLowerInvariant()), Loc.T("sex." + d.Sex.ToString().ToLowerInvariant()))
+            + "\n" + Loc.F("inspector.growth", d.BodyScale, d.LifespanDays);
 
         float[] values = { d.Health, d.Energy, d.Hydration, d.Fatigue, d.Fear };
         for (int i = 0; i < 5; i++)

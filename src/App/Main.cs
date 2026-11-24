@@ -16,7 +16,7 @@ namespace PaleoSphere.App;
 /// 앱 진입점. 데이터를 읽고 세션·3D 화면·UI를 만든 뒤, 프레임마다
 /// 입력 → 명령 → 시뮬레이션 진행 → 스냅샷 표시 순서로 돌린다.
 /// 명령줄 인자(-- 뒤): --selftest, --scenario=id, --screenshot=경로, --frames=N, --warmup-ticks=N,
-/// --autoplay=배속, --select, --select-activity=Eat|Drink|Rest|Walk|Run|Attack, --select-species=종id, --search-days=N, --zoom=거리, --hour=시각, --tab=N, --hide-start, --benchmark=개체수, --seconds=N, --uitest
+/// --autoplay=배속, --select, --select-activity=Eat|Drink|Rest|Walk|Run|Attack, --select-species=종id, --search-days=N, --spread-ages, --zoom=거리, --hour=시각, --tab=N, --hide-start, --benchmark=개체수, --seconds=N, --uitest
 /// </summary>
 public partial class Main : Node
 {
@@ -452,6 +452,16 @@ public partial class Main : Node
                 remaining -= n;
             }
             sim.ApplyPendingCommands();
+        }
+
+        if (_args.ContainsKey("spread-ages"))
+        {
+            // 화면 확인용: 개체 나이를 갓 태어난 개체부터 성체까지 여섯 단계로 흩어 놓는다.
+            for (int i = 0; i < sim.CreatureCount; i++)
+            {
+                PaleoSphere.Creatures.Creature c = sim.Creatures[i];
+                c.AgeDays = sim.World.Species[c.SpeciesIndex].AdultAgeDays * (i % 6) / 5f;
+            }
         }
 
         int warmup = ArgInt("warmup-ticks", 0);

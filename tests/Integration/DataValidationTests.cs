@@ -163,6 +163,50 @@ public class DataValidationTests : IDisposable
     }
 
     [Fact]
+    public void LifeHistory_Defaults_AndOptionalFields()
+    {
+        SpeciesDefinition tri = TestData.Data.Species[0];
+        Assert.InRange(tri.HatchLengthFraction, 0.02f, 1f);
+        Assert.InRange(tri.SubadultAgeDays, 0f, tri.AdultAgeDays);
+        Assert.InRange(tri.SenescenceFraction, 0.3f, 1f);
+
+        string good = RepoFile("species/triceratops_horridus.json");
+        var node = System.Text.Json.Nodes.JsonNode.Parse(good)!;
+        var life = node["life_history"]!.AsObject();
+        life["hatch_length_fraction"] = 0.2;
+        life["subadult_age_days"] = 5;
+        life["lifespan_variation"] = 0;
+        var report = new ValidationReport();
+        SpeciesDefinition? sp = DefinitionLoaders.ParseSpecies(node.ToJsonString(), "tri.json", report);
+        Assert.NotNull(sp);
+        Assert.Empty(report.Errors);
+        Assert.Equal(0.2f, sp!.HatchLengthFraction, 5);
+        Assert.Equal(5f, sp.SubadultAgeDays);
+        Assert.Equal(sp.MaxAgeDays, LifeHistory.RollLifespan(sp, 0.9f));
+    }
+
+    [Fact]
+    public void LifeHistory_RejectsSenescenceBeforeAdulthood()
+    {
+        string good = RepoFile("species/triceratops_horridus.json");
+        var node = System.Text.Json.Nodes.JsonNode.Parse(good)!;
+        var life = node["life_history"]!.AsObject();
+        double adult = life["adult_age_days"]!.GetValue<double>();
+        life["max_age_days"] = adult * 1.2;
+        life["senescence_fraction"] = 0.5;
+        var report = new ValidationReport();
+        Assert.Null(DefinitionLoaders.ParseSpecies(node.ToJsonString(), "tri.json", report));
+        Assert.Contains(report.Errors, e => e.Contains("노년"));
+
+        life["max_age_days"] = adult * 10;
+        life["senescence_fraction"] = 0.8;
+        life["subadult_age_days"] = adult + 1;
+        report = new ValidationReport();
+        Assert.Null(DefinitionLoaders.ParseSpecies(node.ToJsonString(), "tri.json", report));
+        Assert.Contains(report.Errors, e => e.Contains("subadult_age_days"));
+    }
+
+    [Fact]
     public void Predator_IsParsed()
     {
         Assert.True(TestData.Data.Species.TryGetIndex(TestData.Predator, out int index));
