@@ -49,7 +49,7 @@
 | 엔진 안 셀프테스트 (`--selftest`) | 에디터 실행과 내보낸 Linux 실행 파일에서 통과 |
 | UI 통합 점검 (`--uitest`, 실제 클릭·키 입력) | 11개 항목 통과 (Linux, 소프트웨어 Vulkan 렌더러). 초식동물 세계만 점검 |
 | 포식·사체 화면 | 스크린샷으로 확인(사냥, 사체 먹기, 사망 원인·개체군 그래프). 자동 점검에는 없음 |
-| Windows x64 디버그 빌드 | **내보내기까지 성공. 실제 Windows에서 실행해 보지는 못했습니다.** |
+| Windows x64 릴리스 빌드 | **내보내기까지 성공. 실제 Windows에서 실행해 보지는 못했습니다.** 같은 설정으로 만든 Linux 릴리스 실행 파일은 셀프테스트 통과 |
 | 화면 프레임률 | **미측정.** 개발 환경에 GPU가 없어 소프트웨어 렌더링(2~4 FPS)으로만 띄웠습니다 |
 | 틱 처리 시간 | 측정함. [docs/PERFORMANCE.md](docs/PERFORMANCE.md) 참고 |
 
@@ -81,7 +81,7 @@ tools/check.sh --with-ui               # 빌드 + 테스트 + 셀프테스트 + 
 ## Windows 실행 파일 만들기
 
 ```bash
-tools/export_windows.sh debug          # Linux·macOS
+tools/export_windows.sh release        # Linux·macOS (debug도 가능)
 ```
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\export_windows.ps1 -Godot "C:\경로\Godot_v4.7.2-stable_mono_win64_console.exe"

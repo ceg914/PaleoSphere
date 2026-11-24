@@ -16,11 +16,17 @@ public sealed class Steering
     private static readonly float[] AvoidAngles = { 0.44f, 0.87f, 1.40f, 2.0f };
     private const int BlockedTicksLimit = 30;
 
+    /// <summary>격자 칸의 최소 크기(m). 칸이 너무 작으면 칸 배열을 비우는 비용이 커진다.</summary>
+    private const float MinHashCellM = 4f;
+
     private float _hashCell = 8f;
     private int _dim;
     private int[] _head = Array.Empty<int>();
     private int[] _next = Array.Empty<int>();
     private Vec2[] _velocity = Array.Empty<Vec2>();
+    // 이번 틱 시작 시점의 위치와 몸 반지름. 분리 계산이 개체 객체를 오가지 않고 배열만 읽게 한다.
+    private Vec2[] _pos = Array.Empty<Vec2>();
+    private float[] _radius = Array.Empty<float>();
 
     public void Step(List<Creature> creatures, WorldState w)
     {
@@ -30,6 +36,8 @@ public sealed class Steering
         {
             _velocity = new Vec2[Math.Max(count, _velocity.Length * 2)];
             _next = new int[_velocity.Length];
+            _pos = new Vec2[_velocity.Length];
+            _radius = new float[_velocity.Length];
         }
 
         BuildHash(creatures, w);
@@ -63,7 +71,7 @@ public sealed class Steering
                 }
             }
 
-            Vec2 push = Separation(creatures, w, i);
+            Vec2 push = Separation(creatures[i].Id, i);
             bool stationary = speed <= 0f;
             Vec2 v = dir * speed + push * (stationary ? 0.4f : 1.5f);
             float cap = MathF.Max(speed, 0.6f);
@@ -149,18 +157,31 @@ public sealed class Steering
     private static Vec2 Clamp(Vec2 p, float margin, float size) =>
         new(MathUtil.Clamp(p.X, margin, size - margin), MathUtil.Clamp(p.Z, margin, size - margin));
 
+    /// <summary>
+    /// 공간 격자를 만든다. 칸 크기는 지금 세계에 있는 개체 가운데 가장 큰 몸 지름이라,
+    /// 겹칠 수 있는 두 개체는 항상 이웃한 칸(3×3) 안에 있다.
+    /// 정의만 있고 세계에 없는 종의 몸집은 칸 크기에 영향을 주지 않는다.
+    /// </summary>
     private void BuildHash(List<Creature> creatures, WorldState w)
     {
-        float maxRadius = 2f;
-        for (int s = 0; s < w.Species.Count; s++)
-            maxRadius = MathF.Max(maxRadius, w.Species[s].BodyRadiusM * 1.3f);
+        int count = creatures.Count;
+        float maxRadius = MinHashCellM * 0.5f;
+        for (int i = 0; i < count; i++)
+        {
+            Creature c = creatures[i];
+            float r = w.Species[c.SpeciesIndex].BodyRadiusM * c.TraitBodySize;
+            _radius[i] = r;
+            _pos[i] = c.Position;
+            if (r > maxRadius) maxRadius = r;
+        }
         _hashCell = maxRadius * 2f;
         _dim = Math.Max(1, (int)MathF.Ceiling(w.Terrain.WorldSize / _hashCell));
-        if (_head.Length != _dim * _dim) _head = new int[_dim * _dim];
-        Array.Fill(_head, -1);
-        for (int i = 0; i < creatures.Count; i++)
+        int cells = _dim * _dim;
+        if (_head.Length < cells) _head = new int[cells];
+        Array.Fill(_head, -1, 0, cells);
+        for (int i = 0; i < count; i++)
         {
-            int h = HashIndex(creatures[i].Position);
+            int h = HashIndex(_pos[i]);
             _next[i] = _head[h];
             _head[h] = i;
         }
@@ -174,12 +195,12 @@ public sealed class Steering
     }
 
     /// <summary>몸이 겹치는 이웃에서 멀어지는 방향(겹친 정도에 비례).</summary>
-    private Vec2 Separation(List<Creature> creatures, WorldState w, int i)
+    private Vec2 Separation(int id, int i)
     {
-        Creature c = creatures[i];
-        float ri = w.Species[c.SpeciesIndex].BodyRadiusM * c.TraitBodySize;
-        int hx = MathUtil.Clamp((int)(c.Position.X / _hashCell), 0, _dim - 1);
-        int hz = MathUtil.Clamp((int)(c.Position.Z / _hashCell), 0, _dim - 1);
+        Vec2 pi = _pos[i];
+        float ri = _radius[i];
+        int hx = MathUtil.Clamp((int)(pi.X / _hashCell), 0, _dim - 1);
+        int hz = MathUtil.Clamp((int)(pi.Z / _hashCell), 0, _dim - 1);
         Vec2 push = Vec2.Zero;
         for (int dz = -1; dz <= 1; dz++)
         {
@@ -192,14 +213,13 @@ public sealed class Steering
                 for (int j = _head[z * _dim + x]; j >= 0; j = _next[j])
                 {
                     if (j == i) continue;
-                    Creature o = creatures[j];
-                    float r = ri + w.Species[o.SpeciesIndex].BodyRadiusM * o.TraitBodySize;
-                    Vec2 d = c.Position - o.Position;
+                    float r = ri + _radius[j];
+                    Vec2 d = pi - _pos[j];
                     float distSq = d.LengthSquared;
                     if (distSq >= r * r) continue;
                     float dist = MathF.Sqrt(distSq);
                     // 완전히 겹치면 id로 정해지는 방향으로 민다(난수 없이 결정론 유지).
-                    Vec2 n = dist > 1e-3f ? d / dist : Vec2.FromHeading(c.Id * 137 % 360 * (MathUtil.TwoPi / 360f));
+                    Vec2 n = dist > 1e-3f ? d / dist : Vec2.FromHeading(id * 137 % 360 * (MathUtil.TwoPi / 360f));
                     push += n * ((r - dist) / r);
                 }
             }
